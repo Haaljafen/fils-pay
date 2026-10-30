@@ -38,6 +38,15 @@ export async function businessProfileRoutes(app: FastifyInstance): Promise<void>
       throw new BadRequestError("invalid_request", "missing required business profile or owner fields");
     }
 
+    // Any password was accepted, including one character; a leaked or guessed owner password is full
+    // access to the merchant's money. Length is what matters (NIST 800-63B): 10 minimum, 256 cap to bound hashing cost.
+    if (typeof owner.password !== "string" || owner.password.length < 10 || owner.password.length > 256) {
+      throw new BadRequestError("weak_password", "password must be between 10 and 256 characters");
+    }
+    if (typeof owner.email !== "string" || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(owner.email)) {
+      throw new BadRequestError("invalid_request", "owner.email must be a valid email address");
+    }
+
     const result = await createMerchantWithOwner(app.db, app.config, body as SignupInput);
     reply.code(201).send({
       merchantId: result.merchantId,
