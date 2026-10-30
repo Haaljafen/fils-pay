@@ -65,11 +65,13 @@ export function RegisterPage() {
   }
 
   return (
-    <main className="dash-centered">
-      <h1>Register your business</h1>
-      <p className="dash-muted">Create a merchant account. You will sign in with a one-time code afterwards.</p>
-      {error ? <p className="dash-error">{error}</p> : null}
-      <form onSubmit={(e) => void onSubmit(e)} className="dash-form">
+    <main className="dash-centered dash-register">
+      <div className="dash-register-head">
+        <h1>Register your business</h1>
+        <p className="dash-muted">Sign in afterwards with a one-time code.</p>
+      </div>
+      {error ? <p className="dash-error dash-register-error">{error}</p> : null}
+      <form onSubmit={(e) => void onSubmit(e)} className="dash-register-form">
         <label>Legal name<input required value={f.legalName} onChange={set("legalName")} /></label>
         <label>Commercial registration number<input required value={f.registrationNumber} onChange={set("registrationNumber")} /></label>
         <label>Business type
@@ -88,9 +90,11 @@ export function RegisterPage() {
         <label>Confirm password
           <input type="password" autoComplete="new-password" minLength={10} required value={f.confirm} onChange={set("confirm")} />
         </label>
-        <button type="submit" className="dash-button" disabled={submitting}>{submitting ? "Creating..." : "Create account"}</button>
+        <div className="dash-register-foot">
+          <button type="submit" className="dash-button" disabled={submitting}>{submitting ? "Creating..." : "Create account"}</button>
+          <p className="dash-muted">Already registered? <Link to="/dashboard/login">Sign in</Link></p>
+        </div>
       </form>
-      <p className="dash-muted">Already registered? <Link to="/dashboard/login">Sign in</Link></p>
     </main>
   );
 }

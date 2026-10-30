@@ -3,7 +3,6 @@ import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import { useAdminAuth } from "../auth/AdminAuthContext.js";
 import { describeError, WEB_BASE_URL } from "../api/client.js";
 import {
-  BrandMark,
   CreditsIcon,
   ImportIcon,
   LogoutIcon,
@@ -12,6 +11,7 @@ import {
   SettlementIcon,
 } from "./icons.js";
 import { ImpersonationBanner } from "./ImpersonationBanner.js";
+import { ThemeToggle } from "./ThemeToggle.js";
 
 /** Nav shell for every admin-plane screen: who you are signed in as, the
  *  section links, a logout, and — above all of it — the impersonation
@@ -39,7 +39,6 @@ export function AdminLayout() {
       <div className="admin-frame">
         <aside className="admin-side">
           <div className="admin-brand">
-            <BrandMark />
             <div>
               <strong>FilsPay</strong>
               <span>Admin console</span>
@@ -85,6 +84,7 @@ export function AdminLayout() {
                   </div>
                 </div>
               ) : null}
+              <ThemeToggle />
               <button type="button" className="admin-logout" onClick={() => void handleSignOut()}>
                 <LogoutIcon />
                 Log out

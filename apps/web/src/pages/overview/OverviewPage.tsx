@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { getPayoutTrends, getTopLinks, getVolumes } from "../../api/analytics.js";
 import { describeError } from "../../api/client.js";
 import { useDashboardAuth } from "../../auth/DashboardAuthContext.js";
+import { BarChart } from "../../components/BarChart.js";
 import { StalenessBadge } from "../../components/StalenessBadge.js";
 import { bhd, dash, dateTime } from "../../format.js";
 import { formatCount } from "../../utils/helpers.js";
@@ -140,6 +141,15 @@ export function OverviewPage() {
       </form>
 
       {error ? <p className="dash-error">{error}</p> : null}
+
+      <h2>Daily captured volume</h2>
+      <div className="dash-chart-card">
+        <BarChart
+          label="Captured gross per day"
+          data={(volumes?.points ?? []).map((point) => ({ label: point.date, value: point.capturedGrossFils }))}
+          format={bhd}
+        />
+      </div>
 
       <h2>
         Captured volume{" "}

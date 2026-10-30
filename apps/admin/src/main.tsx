@@ -3,7 +3,10 @@ import ReactDOM from "react-dom/client";
 import { RouterProvider } from "react-router-dom";
 import { AdminAuthProvider } from "./auth/AdminAuthContext.js";
 import { router } from "./router.js";
+import { initTheme } from "./theme.js";
 import "./admin.css";
+
+initTheme();
 
 const rootElement = document.getElementById("root");
 if (!rootElement) {
