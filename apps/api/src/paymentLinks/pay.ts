@@ -8,7 +8,6 @@ export interface PayPaymentLinkInput {
   token: string;
   card: SimulatedCardInput;
   idempotencyKey: string;
-  submittedAt?: string;
 }
 
 export interface PayPaymentLinkResult {
@@ -27,25 +26,6 @@ interface ClaimedLinkRow {
 interface LinkStatusRow {
   status: string;
   expires_at: Date;
-}
-
-/** How far back a client's `submittedAt` is believed: long enough for a
- *  network retry of a pay that was pressed just before expiry, short enough
- *  that a public caller can't pay a long-expired link by sending an old
- *  timestamp. */
-export const SUBMITTED_AT_GRACE_MS = 5 * 60_000;
-
-/** A pay request is judged against when the buyer pressed pay, so a retry
- * that lands just after expiry is not penalised. `submittedAt` comes from an
- * unauthenticated client, so it is only believed within
- * SUBMITTED_AT_GRACE_MS before the server's clock; anything older, in the
- * future, or unparseable falls back to the server's time. */
-export function expiryReferenceTime(submittedAt?: string, now: Date = new Date()): Date {
-  if (!submittedAt) return now;
-  const parsed = new Date(submittedAt);
-  const ageMs = now.getTime() - parsed.getTime();
-  if (Number.isNaN(ageMs) || ageMs < 0 || ageMs > SUBMITTED_AT_GRACE_MS) return now;
-  return parsed;
 }
 
 /**
@@ -148,7 +128,9 @@ async function payWhileHoldingLinkLock(
   config: { paymentLinkReservationTimeoutSeconds: number },
   input: PayPaymentLinkInput,
 ): Promise<PayPaymentLinkResult> {
-  const expiryCheckTime = expiryReferenceTime(input.submittedAt);
+  // The server's clock decides expiry. A client-supplied time would let a
+  // buyer extend a link's life (FP-187).
+  const expiryCheckTime = new Date();
 
   // Step 1 — claim. A single UPDATE is already atomic; no explicit
   // transaction needed.
@@ -158,7 +140,11 @@ async function payWhileHoldingLinkLock(
       WHERE token = $1
         AND (
              status = 'active'
-             OR (status = 'reserved' AND reserved_at < now() - ($2 || ' seconds')::interval)
+             -- A stale reservation is reclaimable only if no transaction was recorded
+             -- against it. A recorded one may already have captured money, and a
+             -- second charge on the same link is the worst outcome (bug 90).
+             OR (status = 'reserved' AND pending_transaction_id IS NULL
+                 AND reserved_at < now() - ($2 || ' seconds')::interval)
             )
         AND expires_at > $3
       RETURNING id, merchant_id, amount_fils, reference`,
@@ -180,6 +166,8 @@ async function payWhileHoldingLinkLock(
   // Step 2 — authorize.
   // am: keys include link.id so two links can never collide on idempotency. good
   const authorizeKey = `paylink:${link.id}:${input.idempotencyKey}:authorize`;
+  // An unexpected throw (not a declined or failed result) must not leave the
+  // link 'reserved' for the whole reservation timeout: release it, then rethrow.
   const authResult = await authorizeTransaction(pool, acquirer, {
     merchantId: link.merchantId,
     amountFils: link.amountFils,
@@ -189,6 +177,9 @@ async function payWhileHoldingLinkLock(
     // No merchant session/API key initiated this — a customer did, via
     // the public link.
     actor: { type: "system" },
+  }).catch(async (err: unknown) => {
+    await releaseReservation(pool, link.id);
+    throw err;
   });
 
   if (authResult.statusCode !== 201) {
@@ -200,6 +191,11 @@ async function payWhileHoldingLinkLock(
   }
 
   const txnId = (authResult.body as { id: string }).id;
+
+  // Record the attempt's transaction on the link while it is still reserved.
+  // From here on a crash or failed write cannot make the link payable again
+  // while the attempt's money may have moved (bug 90).
+  await pool.query(`UPDATE payment_links SET pending_transaction_id = $2 WHERE id = $1 AND status = 'reserved'`, [link.id, txnId]);
 
   // NOTE: discountAdjustment is applied by the transactions route only, not here — FH
   // MK: it's applied for both now (moved into capture.ts in July)
@@ -213,6 +209,9 @@ async function payWhileHoldingLinkLock(
     merchantId: link.merchantId,
     idempotencyKey: captureKey,
     actor: { type: "system", id: link.id },
+  }).catch(async (err: unknown) => {
+    await releaseReservation(pool, link.id);
+    throw err;
   });
 
   if (captureResult.statusCode !== 200) {
@@ -232,7 +231,7 @@ async function payWhileHoldingLinkLock(
     paid_at: Date;
   }>(
     `UPDATE payment_links
-        SET status = 'paid', paid_at = now(), transaction_id = $2, reserved_at = NULL
+        SET status = 'paid', paid_at = now(), transaction_id = $2, reserved_at = NULL, pending_transaction_id = NULL
       WHERE id = $1 AND status = 'reserved'
       RETURNING id, paid_at`,
     [link.id, txnId],
@@ -273,9 +272,10 @@ async function payWhileHoldingLinkLock(
  * only ever releases the reservation it itself holds.
  */
 async function releaseReservation(pool: Pool, linkId: string): Promise<void> {
-  await pool.query(`UPDATE payment_links SET status = 'active', reserved_at = NULL WHERE id = $1 AND status = 'reserved'`, [
-    linkId,
-  ]);
+  await pool.query(
+    `UPDATE payment_links SET status = 'active', reserved_at = NULL, pending_transaction_id = NULL WHERE id = $1 AND status = 'reserved'`,
+    [linkId],
+  );
 }
 
 /**

@@ -5,11 +5,10 @@ package ledger
 
 import (
 	"context"
-	"errors"
 	"fmt"
+	"sort"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/filspay/settlement/internal/money"
@@ -86,18 +85,48 @@ func RebuildAllBalances(ctx context.Context, db *pgxpool.Pool) (map[uuid.UUID]Re
 	}
 	rows.Close()
 
-	// TODO: lock merchant_balances rows first, a concurrent CloseBatch increment gets clobbered -- YA
+	// Lock every merchant's balance row before reading any ledger sum. The
+	// incremental writers (CloseBatch, adjustments) update these rows
+	// relatively and hold each lock until they commit, so this waits for
+	// anything in flight, and the sums below see everything it wrote. Without
+	// the lock the rebuild overwrote an increment with a value computed from a
+	// snapshot taken before it. Rows are taken in merchant_id order, the same
+	// order for every caller, so two rebuilds or a rebuild and a close cannot
+	// deadlock on each other.
 	diffs := make(map[uuid.UUID]RebuildDiff, len(merchantIDs))
+	sort.Slice(merchantIDs, func(i, j int) bool { return merchantIDs[i].String() < merchantIDs[j].String() })
+	if _, err := tx.Exec(ctx, `
+		INSERT INTO merchant_balances (merchant_id, cached_payable_fils, updated_at)
+		SELECT id, 0, now() FROM unnest($1::uuid[]) AS id ORDER BY id
+		ON CONFLICT (merchant_id) DO NOTHING
+	`, merchantIDs); err != nil {
+		return nil, fmt.Errorf("ledger: RebuildAllBalances: ensure balance rows: %w", err)
+	}
+	cachedBefore := make(map[uuid.UUID]int64, len(merchantIDs))
+	lockRows, err := tx.Query(ctx, `
+		SELECT merchant_id, cached_payable_fils FROM merchant_balances
+		 WHERE merchant_id = ANY($1::uuid[])
+		 ORDER BY merchant_id
+		   FOR UPDATE
+	`, merchantIDs)
+	if err != nil {
+		return nil, fmt.Errorf("ledger: RebuildAllBalances: lock cached balances: %w", err)
+	}
+	for lockRows.Next() {
+		var id uuid.UUID
+		var cached int64
+		if err := lockRows.Scan(&id, &cached); err != nil {
+			lockRows.Close()
+			return nil, fmt.Errorf("ledger: RebuildAllBalances: scan locked balance: %w", err)
+		}
+		cachedBefore[id] = cached
+	}
+	if err := lockRows.Err(); err != nil {
+		return nil, fmt.Errorf("ledger: RebuildAllBalances: iterate locked balances: %w", err)
+	}
+	lockRows.Close()
 
 	for _, merchantID := range merchantIDs {
-		var cachedBefore int64
-		err := tx.QueryRow(ctx, `
-			SELECT COALESCE(cached_payable_fils, 0) FROM merchant_balances WHERE merchant_id = $1
-		`, merchantID).Scan(&cachedBefore)
-		if err != nil && !errors.Is(err, pgx.ErrNoRows) {
-			return nil, fmt.Errorf("ledger: RebuildAllBalances: read cached balance for %s: %w", merchantID, err)
-		}
-
 		var rebuilt int64
 		err = tx.QueryRow(ctx, `
 			SELECT COALESCE(SUM(CASE WHEN direction = 'credit' THEN amount_fils ELSE -amount_fils END), 0)
@@ -120,7 +149,7 @@ func RebuildAllBalances(ctx context.Context, db *pgxpool.Pool) (map[uuid.UUID]Re
 
 		diffs[merchantID] = RebuildDiff{
 			MerchantID:   merchantID,
-			CachedBefore: money.Fils(cachedBefore),
+			CachedBefore: money.Fils(cachedBefore[merchantID]),
 			Rebuilt:      money.Fils(rebuilt),
 		}
 	}

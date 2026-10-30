@@ -72,6 +72,26 @@ async function noteCount(callbackId: string): Promise<string> {
   return result.rows[0]!.count;
 }
 
+test("POST /v1/acquirer/callbacks accepts a genuine callback whose bytes are not JSON.stringify's output", async () => {
+  const transactionId = await createTransaction();
+  const callbackId = `acqcb_${randomUUID()}`;
+  const body = callbackBody(transactionId, callbackId);
+  // The acquirer signs its own serialisation: pretty-printed, not compact.
+  const raw = JSON.stringify(body, null, 2);
+  const timestamp = Math.floor(Date.now() / 1000);
+  const signature = createHmac("sha256", ACQUIRER_SECRET).update(`${timestamp}.${raw}`).digest("hex");
+
+  const res = await app.inject({
+    method: "POST",
+    url: "/v1/acquirer/callbacks",
+    headers: { "acquirer-callback-signature": `t=${timestamp},v1=${signature}`, "content-type": "application/json" },
+    payload: raw,
+  });
+
+  assert.equal(res.statusCode, 200);
+  assert.equal(await noteCount(callbackId), "1");
+});
+
 test("POST /v1/acquirer/callbacks accepts a correctly-signed callback and records the note", async () => {
   const transactionId = await createTransaction();
   const callbackId = `acqcb_${randomUUID()}`;

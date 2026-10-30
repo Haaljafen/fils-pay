@@ -46,8 +46,13 @@ export interface VerifyAcquirerCallbackResult {
 /** Same window webhooks/sign.ts uses for outbound signatures. */
 const DEFAULT_TOLERANCE_SECONDS = 300;
 
+/**
+ * `rawBody` must be the exact bytes the acquirer sent. Re-serialising the
+ * parsed body changes key order and whitespace, so a genuine callback could
+ * fail the check; the signature is over the bytes, as the acquirer signed them.
+ */
 export function verifyAcquirerCallbackSignature(
-  payload: unknown,
+  rawBody: string,
   header: string | undefined,
   secret: string,
   options?: { toleranceSeconds?: number; now?: number },
@@ -60,7 +65,7 @@ export function verifyAcquirerCallbackSignature(
   if (!parsed) return { valid: false, reason: "malformed_header" };
 
   const expected = createHmac("sha256", secret)
-    .update(`${parsed.timestamp}.${JSON.stringify(payload)}`)
+    .update(`${parsed.timestamp}.${rawBody}`)
     .digest("hex");
 
   if (!timingSafeEqualHex(expected, parsed.signature)) {

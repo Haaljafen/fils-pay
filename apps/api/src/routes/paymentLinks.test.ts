@@ -381,11 +381,15 @@ test("a long-expired link cannot be paid by sending an old submittedAt", async (
   assert.equal(res.json().error, "payment_link_expired");
 });
 
-test("a pay retry submitted just before expiry still succeeds just after it", async () => {
-  const { rawKey, merchantId } = await createApprovedMerchantWithApiKey("expired-retry-grace");
+// The server's clock alone decides expiry. A client-supplied time used to
+// extend a link's life by up to 5 minutes, so a link could be paid after it
+// had expired (FP-187).
+test("a link that expired a minute ago is refused even if the client says it paid before expiry", async () => {
+  const { rawKey, merchantId } = await createApprovedMerchantWithApiKey("expired-no-client-clock");
   const link = await createLink(rawKey, merchantId, {});
   await pool.query(`UPDATE payment_links SET expires_at = now() - interval '1 minute' WHERE token = $1`, [link.token]);
 
   const res = await payWithSubmittedAt(link.token, new Date(Date.now() - 2 * 60_000).toISOString());
-  assert.equal(res.statusCode, 200, res.body);
+  assert.equal(res.statusCode, 410, res.body);
+  assert.equal(res.json().error, "payment_link_expired");
 });

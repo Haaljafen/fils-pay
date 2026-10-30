@@ -335,7 +335,7 @@ test("no backfill: an endpoint registered after an event was enqueued never gets
   assert.equal(captured.length, 1);
 });
 
-test("per-row isolation: one poisoned row (undecryptable secret) throwing before the transport call never blocks another merchant's healthy delivery in the same pass, and the poisoned row's state is left unchanged rather than crashing the pass", async () => {
+test("per-row isolation: one poisoned row (undecryptable secret) throwing before the transport call never blocks another merchant's healthy delivery in the same pass, and the poisoned row is parked as exhausted (never sent, never retried) rather than crashing the pass", async () => {
   const poisonedMerchantId = await createMerchant("poisoned");
   const poisonedEndpoint = await createEndpoint(poisonedMerchantId, "http://poisoned.test/webhook");
   const poisonedOutboxEvent = await enqueueCaptured(poisonedMerchantId);
@@ -374,11 +374,10 @@ test("per-row isolation: one poisoned row (undecryptable secret) throwing before
   assert.equal(healthyDelivery.response_status_code, 200);
 
   // The poisoned row was created by Step A (its existence itself proves
-  // Step A ran), but Step B's per-row throw must leave it completely
-  // untouched: still pending, zero attempts, never attempted, unmodified
-  // next_attempt_at so it is simply retried next pass.
+  // Step A ran). Its secret can never decrypt, so it is parked as exhausted:
+  // never signed, never sent, and never claimed again.
   const poisonedDelivery = await getDelivery(String(poisonedOutboxEvent.id), poisonedEndpoint.id);
-  assert.equal(poisonedDelivery.status, "pending");
+  assert.equal(poisonedDelivery.status, "exhausted");
   assert.equal(poisonedDelivery.attempt_count, 0);
   assert.equal(poisonedDelivery.response_status_code, null);
   assert.equal(poisonedDelivery.signature, null);
@@ -388,7 +387,7 @@ test("per-row isolation: one poisoned row (undecryptable secret) throwing before
   // one call happened not to throw.
   await assert.doesNotReject(runDispatchPass(pool, transport, config));
   const poisonedAfterSecondPass = await getDelivery(String(poisonedOutboxEvent.id), poisonedEndpoint.id);
-  assert.equal(poisonedAfterSecondPass.status, "pending");
+  assert.equal(poisonedAfterSecondPass.status, "exhausted");
   assert.equal(poisonedAfterSecondPass.attempt_count, 0);
 });
 

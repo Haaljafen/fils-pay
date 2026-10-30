@@ -55,6 +55,19 @@ wrong, why it happens, and what it breaks.
 | 54 | A capture its day's batch missed is never paid out | ✅ Fixed |
 | 55 | Production has no way to get a login code | 🟡 Workaround: `OTP_LOG_CODE`; no email/SMS sender yet |
 | 79 | The hosted dashboards can show a blank page after a rebuild | ✅ Fixed |
+| 80 | The merchant fee shown on the admin page can differ from the fee charged (backdated or future-dated rate rows) | ✅ Fixed |
+| 81 | A balance rebuild overwrites an increment that commits while it runs (lost update, cache below ledger) | ✅ Fixed |
+| 82 | Acquirer callback signature is checked over re-serialised JSON, so a genuine callback can be rejected | ✅ Fixed |
+| 83 | A payment link can be paid up to 5 minutes after expiry, because the client's own clock is trusted | ✅ Fixed |
+| 84 | An unexpected error during pay leaves the link reserved (shown as processing) for the whole timeout | ✅ Fixed (authorize and capture only; see 90) |
+| 85 | A delivery whose secret cannot be decrypted is retried on every pass, forever | ✅ Fixed |
+| 86 | `cancelPaymentLink` cancels any merchant's link when the merchant id is omitted | ✅ Fixed |
+| 87 | The daily capture metric uses the UTC date, not the Bahrain business day the rebuild uses | ✅ Fixed |
+| 88 | The public pay endpoint has no rate limit | ✅ Fixed (nginx, per client IP) |
+| 89 | The admin fee display shows nothing for a merchant whose only rate row is future-dated | ⛔ Not a bug: the admin page shows the merchant's own rate beside it |
+| 90 | If the capture succeeds but the final write fails, the link stays reserved and can be paid again after the timeout | ✅ Double charge fixed (migration 0079, `pending_transaction_id`); 🟡 blocked buyers until the sweep (`paymentLinks/sweep.ts`, in progress by fils-pay-49) |
+| 91 | Test-mode merchants can take payments through the normal authorize path | ⛔ Not a bug: by design (sandbox); settlement excludes them |
+| 92 | Wrong-merchant API-key routes return 403 while other routes return 404 | ⛔ Not a bug: 403 is returned for any path that isn't yours, so no record is revealed |
 
 ---
 
@@ -1615,3 +1628,139 @@ expired or wrong link such as `/pay` with no token now lands on the dashboard
 login instead of an error page.
 
 The fix reaches the server only on a rebuild of the `web` and `admin` images.
+
+---
+
+## Follow-up fixes (October 2026): bugs 80–92
+
+Each fix has a test that failed on the old code. The tests are in the files listed.
+
+### 80. The admin fee display can differ from the fee charged ✅ Fixed
+
+**Files:** `apps/api/src/fees/currentFeeScheduleDisplay.ts`, `currentFeeScheduleDisplay.test.ts`
+
+**What's wrong:** The display ordered fee rows by `created_at`. Capture charges the row whose `effective_from` has arrived (`fees/feeSchedule.ts`).
+
+**Why:** Two rules for "current rate" existed side by side. A backdated correction entered today showed as current, and a future-dated row showed before it applied. The test had locked in the wrong rule ("a backdated row wins").
+
+**What it breaks:** The admin page showed 245 bps while 225 bps was charged.
+
+**Fix:** The display uses the same rule as the charge: newest row whose `effective_from <= now()`, ordered `effective_from DESC, created_at DESC`.
+
+### 81. A balance rebuild overwrites an increment that commits while it runs ✅ Fixed
+
+**Files:** `apps/settlement/internal/ledger/rebuild.go`, `rebuild_race_test.go` (new)
+
+**What's wrong:** `RebuildAllBalances` summed the ledger and then wrote an absolute balance without locking the merchant's row. Writers (CloseBatch, adjustments) use relative increments that hold the row lock until commit.
+
+**Why:** The rebuild's snapshot could be older than an increment, and its write then overwrote that increment.
+
+**What it breaks:** The cache ends up below the ledger. This is the likely cause of the 135K → 7K report (FP-203).
+
+**Fix:** The rebuild locks every merchant's balance row before any sum, in `merchant_id` order, so two rebuilds cannot deadlock each other. The first version (one row at a time) deadlocked under parallel tests; locking in order fixed it.
+
+**Operational note:** A rebuild now waits for in-flight increments on the rows it touches. Run it as a CLI, not inside a request.
+
+### 82. Acquirer callback signature checked over re-serialised JSON ✅ Fixed
+
+**Files:** `apps/api/src/webhooks/inboundVerify.ts`, `inboundVerify.test.ts`, `routes/acquirerCallbacks.ts`, `routes/acquirerCallbacks.test.ts`
+
+**What's wrong:** The check signed `JSON.stringify(parsedBody)`, not the bytes received.
+
+**Why:** Key order and whitespace are not preserved by parsing. A genuine, correctly signed callback could fail the check.
+
+**What it breaks:** Valid acquirer callbacks rejected (the inbound half of FP-240).
+
+**Fix:** The route parses JSON through a parser scoped to that route, keeps the raw string, and verifies the HMAC over the exact bytes. Other routes keep Fastify's parser.
+
+### 83. Payment links payable after expiry via the client clock ✅ Fixed
+
+**Files:** `apps/api/src/paymentLinks/pay.ts`, `pay.test.ts` (deleted; it covered only the removed helper), `routes/paymentLinks.ts`, `routes/paymentLinks.test.ts`, `apps/web/src/pages/checkout/CheckoutPage.tsx`, `apps/web/src/api/paymentLinks.ts`
+
+**What's wrong:** A `submittedAt` field from an unauthenticated client was trusted for up to 5 minutes after expiry. The route's comment said it was honoured only for API-key requests; the code honoured it for everyone.
+
+**Why:** The grace window was built to forgive network retries, but it trusted a value the buyer controls.
+
+**What it breaks:** Links expired up to 5 minutes earlier could be paid (FP-187).
+
+**Fix:** The server clock alone decides expiry. The checkout page no longer sends a timestamp. Trade-off: a payment that reaches the server after expiry is refused, and the buyer needs a new link.
+
+### 84. Unexpected errors leave the link reserved ✅ Fixed (partly; see 90)
+
+**Files:** `apps/api/src/paymentLinks/pay.ts`, `routes/paymentLinks.reservation.new.test.ts` (new)
+
+**What's wrong:** If authorize or capture throws (not a decline), the reservation was never released.
+
+**Why:** Only declined and failed results released it.
+
+**What it breaks:** The link showed "processing" for the whole reservation timeout (60 s).
+
+**Fix:** Authorize and capture now release the reservation before rethrowing. The test replaces the acquirer with one that throws, and expects the link to return to `active`.
+
+**Not covered:** A failure after a successful capture. See 90.
+
+### 85. Undecryptable webhook secrets retried forever ✅ Fixed
+
+**Files:** `apps/api/src/webhooks/dispatcher.ts`, `dispatcher.undecryptable.new.test.ts` (new), `dispatcher.test.ts` (one test updated)
+
+**What's wrong:** A delivery whose endpoint secret failed to decrypt threw inside the pass, was logged, and left `pending`. It was claimed again on every pass.
+
+**Why:** No branch treated a permanent failure as permanent.
+
+**What it breaks:** One poisoned row produced an error and a lease on every pass, indefinitely.
+
+**Fix:** That decrypt failure parks the delivery as `exhausted` with a note. The configured key is shared across rows, so a wrong key is not treated as a per-row failure.
+
+### 86. `cancelPaymentLink` cancels any merchant's link without a merchant id ✅ Fixed
+
+**Files:** `apps/api/src/paymentLinks/cancel.ts`
+
+**What's wrong:** `merchantId` was optional. Without it the query matched any merchant's link by id.
+
+**What it breaks:** A future caller forgetting the argument could cancel another merchant's link.
+
+**Fix:** The argument is required, so the compiler enforces it. The only caller already passes it.
+
+### 87. Capture metric uses the UTC date ✅ Fixed
+
+**Files:** `apps/api/src/lib/businessDate.ts` (new), `lib/businessDate.new.test.ts` (new), `payments/capture.ts`
+
+**What's wrong:** `recordCaptureMetric` wrote `merchant_daily_volume` by UTC date. The reporting rebuild uses the Bahrain date (ADR-0003).
+
+**What it breaks:** For the first three Bahrain hours each day, live counts and rebuilt counts landed on different days.
+
+**Fix:** Live capture uses the Asia/Bahrain business date through the new helper.
+
+### 88. The public pay endpoint has no rate limit ✅ Fixed
+
+**Files:** `ops/nginx.conf`, `scripts/nginx_pay_rate.test.ts` (new)
+
+**What's wrong:** Only login had a request-rate limit.
+
+**Fix:** A `pay_req` zone, 30 requests per minute per client IP with burst 15, on `POST /v1/payment-links/:token/pay`.
+
+**Deployment caveat:** Behind Dilmune's proxy every buyer appears as one client IP, so this limit would apply to all buyers together. Add `set_real_ip_from` and `real_ip_header` first, as set out in the earlier deployment notes.
+
+### 89. The admin fee display is empty for future-dated-only rates ⛔ Not a bug
+
+The admin merchant page also shows the merchant's own `mdr_bps` (`admin/merchants.ts`), so the rate in force is always visible. No change.
+
+### 90. A failure after a successful capture can leave the link payable again ✅ Double charge fixed; sweep pending
+
+**Files:** `apps/api/src/paymentLinks/pay.ts`, `db/migrations/0079_payment_link_pending_transaction.sql` (new), `routes/paymentLinks.reservation.new.test.ts`
+
+**What was wrong:** If capture succeeded but the final `UPDATE ... SET status=paid` failed, the link stayed `reserved`. After the timeout, the reclaim query let the next buyer pay, and that buyer was charged again.
+
+**Why:** `payment_links.transaction_id` can only be set on a paid link (CHECK constraint), so an attempt had nowhere to record its money while reserved.
+
+**Fix:** Migration 0079 adds `pending_transaction_id`. An attempt records its transaction there right after authorize. A reservation with that id set is never reclaimed. Release and finalize both clear it. The test replaces a stale, transaction-bearing reservation and expects the pay to be refused.
+
+**Still open:** The link stays blocked until the sweep (`paymentLinks/sweep.ts`, being written by fils-pay-49) reconciles it with the captured transaction. Buyers are blocked, not charged twice, until then.
+
+### 91. Test-mode merchants take payments through the normal path ⛔ Not a bug
+
+The code comment in `payments/authorize.ts` records the decision: sandbox merchants have to authorize, that is the point of test mode. Test-mode transactions are excluded from settlement, so they never pay out. No change.
+
+### 92. Wrong-merchant API-key routes return 403 ⛔ Not a bug
+
+For a merchant path that isn't yours, the API returns 403 whatever the state of the resource. Resource lookups inside your own merchant return 404 consistently. Neither reveals whether an id exists in another merchant.

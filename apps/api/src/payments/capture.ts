@@ -10,6 +10,7 @@ import { serializeTransaction, type TransactionRow } from "../transactions/seria
 import { ConflictError, UnprocessableEntityError } from "../lib/errors.js";
 import { getEffectiveMdrBps } from "../fees/feeSchedule.js";
 import { getVolumeTierBonusBps } from "../fees/platformVolumeTier.js";
+import { bahrainDateString } from "../lib/businessDate.js";
 
 async function recordCaptureMetric(
   client: import("pg").PoolClient,
@@ -17,7 +18,8 @@ async function recordCaptureMetric(
   amountFils: Fils,
   capturedAt: Date,
 ): Promise<void> {
-  const dateStr = capturedAt.toISOString().slice(0, 10);
+  // The Asia/Bahrain business day, the same day the reporting rebuild uses (ADR-0003).
+  const dateStr = bahrainDateString(capturedAt);
   const existing = await client.query(
     `SELECT merchant_id FROM merchant_daily_volume WHERE merchant_id = $1 AND volume_date = $2`,
     [merchantId, dateStr],

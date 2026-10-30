@@ -154,7 +154,22 @@ async function attemptOneDelivery(
   row: DueDeliveryRow,
 ): Promise<void> {
   const key = decodeEncryptionKey(config.webhookSecretEncryptionKey);
-  const secret = decryptSecret(row.secret_ciphertext, key);
+  let secret: string;
+  try {
+    secret = decryptSecret(row.secret_ciphertext, key);
+  } catch {
+    // This row's stored secret cannot be decrypted, so no retry can ever sign
+    // it. Park it as exhausted: left pending, it was claimed and failed on every
+    // pass, forever. The configured key is shared by every row, so this check
+    // stays per row rather than failing the whole pass.
+    await pool.query(
+      `UPDATE webhook_deliveries
+          SET status = 'exhausted', response_body_excerpt = 'secret_undecryptable: check WEBHOOK_SECRET_ENCRYPTION_KEY'
+        WHERE id = $1 AND status = 'pending'`,
+      [row.id],
+    );
+    return;
+  }
   const signed = signPayload(row.payload, secret);
 
   if (row.attempt_count === 0) {
