@@ -1,13 +1,15 @@
 import type { Pool } from "pg";
 import { NotFoundError } from "../lib/errors.js";
 
-/** @property outcome Validated against the two allowed values by the route schema. */
+export const ACQUIRER_CALLBACK_OUTCOMES = ["cleared", "confirmed_fraud"] as const;
+
+/** @property outcome Checked against ACQUIRER_CALLBACK_OUTCOMES by the route. */
 export interface AcquirerCallbackInput {
   callbackId: string;
   type: "fraud_review.completed";
   transactionId: string;
   occurredAt: string;
-  outcome: "cleared" | "confirmed_fraud";
+  outcome: (typeof ACQUIRER_CALLBACK_OUTCOMES)[number];
   note: string;
 }
 
@@ -23,6 +25,10 @@ interface TransactionMerchantRow {
  * informational, not a state transition, so this never touches
  * transactions.status or the ledger; a confirmed-fraud outcome still needs
  * a human decision to void/refund, exactly as today.
+ *
+ * A redelivered callback (same callback_id) is a no-op: the unique index
+ * from migration 0073 makes the insert skip it, so the route still answers
+ * 200 and the acquirer stops retrying.
  */
 export async function applyAcquirerCallback(pool: Pool, callback: AcquirerCallbackInput): Promise<void> {
   const txnResult = await pool.query<TransactionMerchantRow>(
@@ -37,7 +43,8 @@ export async function applyAcquirerCallback(pool: Pool, callback: AcquirerCallba
   await pool.query(
     `INSERT INTO acquirer_callback_notes
         (transaction_id, merchant_id, callback_id, callback_type, outcome, note, received_at)
-     VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+     VALUES ($1, $2, $3, $4, $5, $6, $7)
+     ON CONFLICT (callback_id) DO NOTHING`,
     [
       callback.transactionId,
       txnRow.merchant_id,

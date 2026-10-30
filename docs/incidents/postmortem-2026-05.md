@@ -10,6 +10,16 @@
 | **Duration** | 2026-05-13 22:47 – 2026-05-14 11:20 Bahrain (12 h 33 m), monitoring until 17:30 |
 | **Related** | FP-198, FP-212, #fp-ops thread 2026-05-13 (docs/archive/slack-export-fp-ops-2026-05.txt) |
 
+> **Correction (October 2026): the root cause below is wrong.** Acquirer
+> callbacks only record a note (`applyAcquirerCallback`); they cannot capture
+> a payment or finalise a link, and the `processed_events` hotfix described
+> here was never built. The timeline's own clue is the real cause: the extra
+> captures were "60–70 s apart", and a payment link's reservation expired
+> after 60 s. A second payer could re-claim a link while the first payment
+> was still waiting on the acquirer, and both were charged. That explains the
+> further double at 16:48, after the "fix". Reproduced and fixed as bug 30 in
+> `docs/README.md` (a per-link advisory lock for the whole pay attempt).
+
 ## Summary
 
 Between the evening of 13 May and the morning of 14 May, eight single-use

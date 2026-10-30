@@ -15,6 +15,11 @@ export interface SignedPayload {
   timestamp: number;
   /** header value: "t=<timestamp>,v1=<hex-hmac-sha256>" */
   signature: string;
+  /** The exact request body that was signed. Send this string, byte for
+   *  byte: a receiver verifies the HMAC over the raw body it receives, so
+   *  re-serialising the payload separately (JSON.stringify) would send
+   *  different bytes from the ones signed. */
+  body: string;
 }
 
 /**
@@ -33,9 +38,9 @@ export function signPayload(
   secret: string,
   timestamp: number = Math.floor(Date.now() / 1000),
 ): SignedPayload {
-  const signedString = `${timestamp}.${canonicalJson(payload)}`;
-  const signature = createHmac("sha256", secret).update(signedString).digest("hex");
-  return { timestamp, signature: `t=${timestamp},v1=${signature}` };
+  const body = canonicalJson(payload);
+  const signature = createHmac("sha256", secret).update(`${timestamp}.${body}`).digest("hex");
+  return { timestamp, signature: `t=${timestamp},v1=${signature}`, body };
 }
 
 interface ParsedSignatureHeader {

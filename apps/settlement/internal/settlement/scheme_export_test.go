@@ -14,8 +14,8 @@ var twoDecimalPlaces = regexp.MustCompile(`^\d+\.\d{2}$`)
 // TestSchemeExportAmountHasTwoDecimals pins the acquirer-format promise
 // scheme_export_lines.amount carries: every line handed to the clearing
 // file is quoted in BD at exactly the two decimal places the scheme
-// accepts — no third digit, no bare integer, no trailing-zero loss.
-// am: 4747 -> "4.75" passes the regex. is 4.75 right for 4747 fils?? it rounds. whatever, scheme wants 2dp
+// accepts — no third digit, no bare integer, no trailing-zero loss. That the
+// value is truncated, not rounded, is checked in scheme_residue_test.go.
 func TestSchemeExportAmountHasTwoDecimals(t *testing.T) {
 	pool := mustPool(t)
 	const mdrBps = 250

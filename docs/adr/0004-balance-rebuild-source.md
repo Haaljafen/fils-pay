@@ -1,6 +1,7 @@
 # 0004. Balance cache rebuild source
 
-- **Status:** Accepted
+- **Status:** Superseded (2026-10). The button now rebuilds from the ledger
+  in one set-based query; see `docs/README.md` bug 23.
 - **Date:** 2026-05-30
 - **Deciders:** Mahmood Khalil
 - **Related:** FP-203, 834f6b0, ADMIN.md "Rebuild cached balances"

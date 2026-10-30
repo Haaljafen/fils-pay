@@ -15,7 +15,7 @@ import { buildApp } from "../app.js";
 import { loadConfig } from "../config.js";
 import { issueApiKey } from "../apiKeys/issue.js";
 import { recordKycReview } from "../onboarding/review.js";
-import { ForbiddenError, NotFoundError } from "../lib/errors.js";
+import { ForbiddenError } from "../lib/errors.js";
 import type { AcquirerRefundResult, AcquirerSimulator } from "../acquirer/types.js";
 import type { MerchantAuthContext } from "../auth/requireMerchantAuth.js";
 import { assertRefundRequestScope, initiateMerchantRefund } from "./initiateMerchantRefund.js";
@@ -172,16 +172,16 @@ test("a partial refund of the caller's own transaction succeeds", async () => {
 test("a transactionId that does not exist is a 404, not a 500", async () => {
   const merchant = await createApprovedMerchantWithApiKey("missing-txn");
 
-  await assert.rejects(
-    () =>
-      initiateMerchantRefund(pool, approvingAcquirer, {
-        merchantId: merchant.merchantId,
-        transactionId: randomUUID(),
-        idempotencyKey: randomUUID(),
-        actor: merchant.actor,
-      }),
-    NotFoundError,
-  );
+  // Same answer as another merchant's transaction: a 404 result, so the two
+  // can't be told apart.
+  const result = await initiateMerchantRefund(pool, approvingAcquirer, {
+    merchantId: merchant.merchantId,
+    transactionId: randomUUID(),
+    idempotencyKey: randomUUID(),
+    actor: merchant.actor,
+  });
+  assert.equal(result.statusCode, 404);
+  assert.deepEqual(result.body, { error: "transaction_not_found" });
 });
 
 test("an invalid refund amount is refused by the validator", async () => {
@@ -270,4 +270,20 @@ test("a refund is refused when refunds_enabled is explicitly false", async () =>
     [transactionId],
   );
   assert.equal(refunds.rows[0]!.c, 0);
+});
+
+test("a merchant cannot refund another merchant's transaction through the merchant entry point", async () => {
+  const owner = await createApprovedMerchantWithApiKey("idor-owner");
+  const attacker = await createApprovedMerchantWithApiKey("idor-attacker");
+  const transactionId = await capturedTransaction(owner.rawKey, 10_000);
+
+  const result = await initiateMerchantRefund(pool, approvingAcquirer, {
+    merchantId: attacker.merchantId,
+    transactionId,
+    idempotencyKey: randomUUID(),
+    actor: attacker.actor,
+  });
+  assert.equal(result.statusCode, 404, JSON.stringify(result.body));
+  const refunds = await pool.query(`SELECT 1 FROM refunds WHERE transaction_id = $1`, [transactionId]);
+  assert.equal(refunds.rowCount, 0, "the owner's transaction must not have been refunded");
 });

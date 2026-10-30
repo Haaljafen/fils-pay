@@ -42,6 +42,7 @@ type batchRow struct {
 	grossFils     money.Fils
 	feeFils       money.Fils
 	netPayoutFils money.Fils
+	carryOutFils  money.Fils
 }
 
 // RecalculateMDR re-derives the fee on a merchant's closed batches in
@@ -61,7 +62,7 @@ func RecalculateMDR(ctx context.Context, db *pgxpool.Pool, merchantID uuid.UUID,
 	}
 
 	rows, err := tx.Query(ctx, `
-		SELECT id, batch_date, status, gross_fils, fee_fils, net_payout_fils
+		SELECT id, batch_date, status, gross_fils, fee_fils, net_payout_fils, carry_out_fils
 		  FROM settlement_batches
 		 WHERE merchant_id = $1 AND batch_date >= $2 AND batch_date < $3
 		   AND status <> 'open'
@@ -74,14 +75,15 @@ func RecalculateMDR(ctx context.Context, db *pgxpool.Pool, merchantID uuid.UUID,
 	var batches []batchRow
 	for rows.Next() {
 		var b batchRow
-		var gross, fee, net int64
-		if err := rows.Scan(&b.id, &b.batchDate, &b.status, &gross, &fee, &net); err != nil {
+		var gross, fee, net, carryOut int64
+		if err := rows.Scan(&b.id, &b.batchDate, &b.status, &gross, &fee, &net, &carryOut); err != nil {
 			rows.Close()
 			return RecalcResult{}, fmt.Errorf("settlement: RecalculateMDR: scan batch: %w", err)
 		}
 		b.grossFils = money.Fils(gross)
 		b.feeFils = money.Fils(fee)
 		b.netPayoutFils = money.Fils(net)
+		b.carryOutFils = money.Fils(carryOut)
 		batches = append(batches, b)
 	}
 	if err := rows.Err(); err != nil {
@@ -100,14 +102,18 @@ func RecalculateMDR(ctx context.Context, db *pgxpool.Pool, merchantID uuid.UUID,
 		if diff == 0 {
 			continue
 		}
-		newNetPayout := b.grossFils - newFee
+		// Moves the batch's position by the fee difference only, so refunds
+		// and carry already netted out of it stay netted out. Later batches
+		// read the outstanding carry as a sum, so a changed carry_out_fils
+		// here reaches the next close.
+		newNetPayout, newCarryOut := PayoutAndCarry(b.netPayoutFils - b.carryOutFils - diff)
 		// am: posts against the OLD batch id so it never lands in a new payout?? fixed in FP-244 i think
 		if err := postMdrAdjustment(ctx, tx, merchantID, b.id, diff); err != nil {
 			return RecalcResult{}, err
 		}
 		if _, err := tx.Exec(ctx, `
-			UPDATE settlement_batches SET fee_fils = $2, net_payout_fils = $3 WHERE id = $1
-		`, b.id, int64(newFee), int64(newNetPayout)); err != nil {
+			UPDATE settlement_batches SET fee_fils = $2, net_payout_fils = $3, carry_out_fils = $4 WHERE id = $1
+		`, b.id, int64(newFee), int64(newNetPayout), int64(newCarryOut)); err != nil {
 			return RecalcResult{}, fmt.Errorf("settlement: RecalculateMDR: update batch %s: %w", b.id, err)
 		}
 		// A fee increase (diff > 0) reduces net payout owed, so the cache

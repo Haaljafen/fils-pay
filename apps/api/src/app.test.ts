@@ -108,7 +108,8 @@ async function signupLoginAndVerify(emailPrefix: string) {
   });
   assert.equal(verifyRes.statusCode, 200, verifyRes.body);
 
-  return { merchantId, email, password, cookie };
+  // The logged-in cookie is the one verify issues, as in a browser.
+  return { merchantId, email, password, cookie: parseCookie(verifyRes.headers["set-cookie"]) };
 }
 
 function buildMultipart(
@@ -231,6 +232,32 @@ test("otp verify with the wrong code is rejected", async () => {
   assert.equal(rightRes.statusCode, 200, rightRes.body);
 });
 
+test("OTP verify re-issues the session cookie: new token, full session lifetime, pre-OTP token dead", async () => {
+  const password = "correct horse battery staple 1!";
+  const { merchantId, email } = await signup("rotate", password);
+  const loginRes = await app.inject({ method: "POST", url: "/v1/auth/login", payload: { merchantId, email, password } });
+  const { devOtpCode } = loginRes.json() as { devOtpCode: string };
+  const pendingCookie = parseCookie(loginRes.headers["set-cookie"]);
+
+  const verifyRes = await app.inject({
+    method: "POST",
+    url: "/v1/auth/otp/verify",
+    headers: { cookie: pendingCookie },
+    payload: { code: devOtpCode },
+  });
+  assert.equal(verifyRes.statusCode, 200, verifyRes.body);
+  const setCookie = verifyRes.headers["set-cookie"];
+  assert.ok(setCookie, "verify must re-issue the cookie (the login cookie only lives as long as the OTP window)");
+  const sessionCookie = parseCookie(setCookie);
+  assert.notEqual(sessionCookie, pendingCookie, "the token must change at OTP verification");
+  assert.match(String(setCookie), new RegExp(`Max-Age=${config.sessionTtlHours * 3600}`));
+
+  const withOld = await app.inject({ method: "GET", url: "/v1/auth/me", headers: { cookie: pendingCookie } });
+  assert.equal(withOld.statusCode, 401, "the pre-OTP token must not become the logged-in token");
+  const withNew = await app.inject({ method: "GET", url: "/v1/auth/me", headers: { cookie: sessionCookie } });
+  assert.equal(withNew.statusCode, 200, withNew.body);
+});
+
 test("KYC upload rejects a fake .pdf whose bytes don't start with %PDF", async () => {
   const { merchantId, cookie } = await signupLoginAndVerify("kycfake");
 
@@ -271,13 +298,32 @@ test("KYC upload accepts a real tiny PDF and moves onboarding_status to under_re
   assert.equal(meRes.json().merchant.onboardingStatus, "under_review");
 });
 
-test("KYC upload rejects a commercial_registration submitted as a non-PDF filename", async () => {
+test("KYC upload accepts a real PDF for commercial_registration whatever its filename says", async () => {
   const { merchantId, cookie } = await signupLoginAndVerify("kycnonpdf");
 
   const pdfBuffer = Buffer.from("%PDF-1.4\n%mock minimal pdf for test\n%%EOF");
   const { body, contentType } = buildMultipart(
     { documentType: "commercial_registration" },
     { fieldName: "file", filename: "registration.docx", contentType: "application/pdf", data: pdfBuffer },
+  );
+
+  const res = await app.inject({
+    method: "POST",
+    url: `/v1/merchants/${merchantId}/kyc/documents`,
+    headers: { cookie, "content-type": contentType },
+    payload: body,
+  });
+  assert.equal(res.statusCode, 201, res.body);
+});
+
+test("KYC upload rejects a photo named .pdf where a PDF document is required", async () => {
+  const { merchantId, cookie } = await signupLoginAndVerify("kycjpegaspdf");
+
+  const sharp = (await import("sharp")).default;
+  const jpeg = await sharp({ create: { width: 4, height: 4, channels: 3, background: "#ffffff" } }).jpeg().toBuffer();
+  const { body, contentType } = buildMultipart(
+    { documentType: "commercial_registration" },
+    { fieldName: "file", filename: "CR-2026.pdf", contentType: "application/pdf", data: jpeg },
   );
 
   const res = await app.inject({

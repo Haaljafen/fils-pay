@@ -100,6 +100,7 @@ export function SettlementBatchListPage() {
             <th>Status</th>
             <th>Gross</th>
             <th>Fee</th>
+            <th>Refunds</th>
             <th>Net payout</th>
             <th>Closed</th>
             <th>Paid</th>
@@ -116,6 +117,7 @@ export function SettlementBatchListPage() {
               </td>
               <td>{bhd(batch.grossFils)}</td>
               <td>{bhd(batch.feeFils)}</td>
+              <td>{batch.refundFils > 0 ? bhd(batch.refundFils) : "—"}</td>
               <td>{bhd(batch.netPayoutFils)}</td>
               <td>{dateTime(batch.closedAt)}</td>
               <td>{dateTime(batch.paidAt)}</td>

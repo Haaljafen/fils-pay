@@ -22,6 +22,10 @@ export interface Config {
   otpTtlMinutes: number;
   otpCodeLength: number;
   otpMaxAttempts: number;
+  /** Returns the OTP code in the login response (`devOtpCode`), for local
+   *  development without an email/SMS sender. Off unless OTP_DEV_EXPOSE=true:
+   *  when on, the password alone logs anyone in, so it must never depend on
+   *  NODE_ENV being set correctly on a hosted box. Refused in production. */
   otpDevExpose: boolean;
 
   argon2MemoryKib: number;
@@ -85,11 +89,9 @@ export interface Config {
 
   /** Base64-encoded 32 raw bytes, the single application-level AES-256-GCM
    *  key `webhooks/secretCrypto.ts` uses to encrypt/decrypt
-   *  `webhook_endpoints.secret_ciphertext`. Required in every environment
-   *  (not just production) — the platform must be able to actually encrypt
-   *  and later recover a webhook secret's plaintext at send time, so there
-   *  is no "dev doesn't need this" story the way there is for
-   *  `settlementInternalToken`. `loadConfig` decodes and validates the length,
+   *  `webhook_endpoints.secret_ciphertext`. Required when NODE_ENV=production;
+   *  elsewhere an unset value falls back to DEV_FALLBACK_WEBHOOK_KEY_B64, a
+   *  fixed key that must never protect real secrets. `loadConfig` decodes and validates the length,
    *  failing boot on a missing or malformed value rather than accepting
    *  garbage and failing later at first-delivery time. Callers pass
    *  `Buffer.from(config.webhookSecretEncryptionKey, "base64")` to
@@ -110,14 +112,20 @@ export interface Config {
   webhookPollIntervalMs: number;
   /** Per-delivery-attempt HTTP timeout passed to the transport, milliseconds. */
   webhookRequestTimeoutMs: number;
+  /** Lets webhooks reach loopback/private addresses, for a merchant's
+   *  receiver on localhost during development. Defaults to true outside
+   *  production and false in production, where it would let any merchant
+   *  make this server call its own internal network (settlement, Postgres,
+   *  cloud metadata). */
+  webhookAllowPrivateTargets: boolean;
 
   /** Shared secret the acquirer signs its async callbacks with
    *  (routes/acquirerCallbacks.ts). Platform-level, not per-merchant —
    *  unlike webhookSecretEncryptionKey, there is exactly one acquirer
-   *  relationship, not one secret per registered endpoint. */
+   *  relationship, not one secret per registered endpoint. Every callback
+   *  must be signed with it; while it is empty (allowed outside production)
+   *  every callback is rejected. */
   acquirerCallbackSigningSecret: string;
-  /** Set true once the sandbox signs everything. */
-  acquirerCallbackRequireSignature: boolean;
 }
 
 function parseNodeEnv(value: string | undefined): Config["nodeEnv"] {
@@ -150,7 +158,12 @@ function parseBoolEnv(value: string | undefined, fallback: boolean): boolean {
   return value === "true" || value === "1";
 }
 
-const DEV_FALLBACK_WEBHOOK_KEY_B64 = "dGVzdC1rZXktZm9yLWRldi1vbmx5LW5vdC1mb3ItcHJvZA==";
+/** Used only when NODE_ENV !== 'production' and WEBHOOK_SECRET_ENCRYPTION_KEY
+ *  is unset. Fixed rather than random so the seed and the API, which run as
+ *  separate processes, encrypt and decrypt with the same key. The text is
+ *  exactly 32 bytes, the AES-256 key length parseWebhookSecretEncryptionKey
+ *  requires. */
+const DEV_FALLBACK_WEBHOOK_KEY_B64 = Buffer.from("filspay-dev-only-webhook-key-32b").toString("base64");
 
 const BASE64_RE = /^[A-Za-z0-9+/]+={0,2}$/;
 
@@ -189,9 +202,21 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     throw new Error("loadConfig: SETTLEMENT_INTERNAL_TOKEN is required when NODE_ENV=production");
   }
 
+  const otpDevExpose = parseBoolEnv(env.OTP_DEV_EXPOSE, false);
+  if (nodeEnv === "production" && otpDevExpose) {
+    throw new Error("loadConfig: OTP_DEV_EXPOSE must not be enabled when NODE_ENV=production");
+  }
+
   const acquirerCallbackSigningSecret = env.ACQUIRER_CALLBACK_SIGNING_SECRET ?? "";
   if (nodeEnv === "production" && acquirerCallbackSigningSecret === "") {
     throw new Error("loadConfig: ACQUIRER_CALLBACK_SIGNING_SECRET is required when NODE_ENV=production");
+  }
+
+  // Every payment link's `url` is built from this, and customers open it.
+  // The localhost default is only for development.
+  const checkoutBaseUrl = env.CHECKOUT_BASE_URL ?? (nodeEnv === "production" ? "" : "http://localhost:5173");
+  if (nodeEnv === "production" && !checkoutBaseUrl.startsWith("https://")) {
+    throw new Error("loadConfig: CHECKOUT_BASE_URL must be set to an https:// URL when NODE_ENV=production");
   }
 
   return {
@@ -209,7 +234,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     otpTtlMinutes: parseIntEnv(env.OTP_TTL_MINUTES, 5),
     otpCodeLength: parseIntEnv(env.OTP_CODE_LENGTH, 6),
     otpMaxAttempts: parseIntEnv(env.OTP_MAX_ATTEMPTS, 5),
-    otpDevExpose: parseBoolEnv(env.OTP_DEV_EXPOSE, nodeEnv !== "production"),
+    otpDevExpose,
 
     argon2MemoryKib: parseIntEnv(env.ARGON2_MEMORY_KIB, 19_456),
     argon2TimeCost: parseIntEnv(env.ARGON2_TIME_COST, 2),
@@ -243,7 +268,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     settlementInternalToken,
     settlementInternalRequestTimeoutMs: parseIntEnv(env.SETTLEMENT_INTERNAL_REQUEST_TIMEOUT_MS, 30_000),
 
-    checkoutBaseUrl: env.CHECKOUT_BASE_URL ?? "http://localhost:5173",
+    checkoutBaseUrl,
     paymentLinkReservationTimeoutSeconds: parseIntEnv(env.PAYMENT_LINK_RESERVATION_TIMEOUT_SECONDS, 60),
 
     webhookSecretEncryptionKey: parseWebhookSecretEncryptionKey(
@@ -254,8 +279,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     webhookBackoffCapMs: parseIntEnv(env.WEBHOOK_BACKOFF_CAP_MS, 21_600_000),
     webhookPollIntervalMs: parseIntEnv(env.WEBHOOK_POLL_INTERVAL_MS, 5_000),
     webhookRequestTimeoutMs: parseIntEnv(env.WEBHOOK_REQUEST_TIMEOUT_MS, 10_000),
+    webhookAllowPrivateTargets: parseBoolEnv(env.WEBHOOK_ALLOW_PRIVATE_TARGETS, nodeEnv !== "production"),
 
     acquirerCallbackSigningSecret,
-    acquirerCallbackRequireSignature: parseBoolEnv(env.ACQUIRER_CALLBACK_REQUIRE_SIGNATURE, false),
   };
 }

@@ -7,7 +7,7 @@
  * point at a real, migrated Postgres (run `npm run migrate` first).
  */
 import assert from "node:assert/strict";
-import { randomUUID } from "node:crypto";
+import { createHmac, randomUUID } from "node:crypto";
 import { test } from "node:test";
 import { Pool } from "pg";
 import { enqueueEvent } from "@filspay/events";
@@ -126,9 +126,8 @@ test("zero registered endpoints: an outbox event creates no delivery rows", asyn
   assert.equal(rows.rows.length, 0);
 });
 
-// YA: the receiver here re-parses and re-canonicalizes before verifying. a real receiver verifies the raw bytes,
-// so this can't catch a byte mismatch.
-// FH: it verifies the signature end-to-end, so signing is proven correct
+// This receiver re-parses before verifying; the raw-body check a real
+// receiver does is the "raw body exactly as sent" test at the end of the file.
 test("one active endpoint, 2xx response: exact headers/body sent, delivery marked succeeded, signature verifies with the raw secret", async () => {
   const merchantId = await createMerchant("happy-path");
   // A unique URL per test run, not shared with any other test — this file's
@@ -192,7 +191,7 @@ test("failing endpoint: backoff/exhaustion sequence across repeated runDispatchP
   assert.equal(delivery.status, "pending");
   assert.equal(delivery.attempt_count, 1);
   assert.equal(delivery.response_status_code, 500);
-  const expectedDelay1 = backoffDelayMs(1, config);
+  const expectedDelay1 = backoffDelayMs(1, config, () => 0.5); // nominal delay; the real one is ±10% jitter
   assert.equal(expectedDelay1, 1000);
   const actualDelay1 = delivery.next_attempt_at.getTime() - Date.now();
   assert.ok(Math.abs(actualDelay1 - expectedDelay1) < 3000, `expected ~${expectedDelay1}ms, got ${actualDelay1}ms`);
@@ -212,7 +211,7 @@ test("failing endpoint: backoff/exhaustion sequence across repeated runDispatchP
   delivery = await getDelivery(String(outboxEvent.id), endpoint.id);
   assert.equal(delivery.status, "pending");
   assert.equal(delivery.attempt_count, 2);
-  const expectedDelay2 = backoffDelayMs(2, config);
+  const expectedDelay2 = backoffDelayMs(2, config, () => 0.5);
   assert.equal(expectedDelay2, 2000);
   const actualDelay2 = delivery.next_attempt_at.getTime() - Date.now();
   assert.ok(Math.abs(actualDelay2 - expectedDelay2) < 3000, `expected ~${expectedDelay2}ms, got ${actualDelay2}ms`);
@@ -407,4 +406,50 @@ test("a disabled endpoint gets no delivery row for a new event", async () => {
     endpoint.id,
   ]);
   assert.equal(rows.rows.length, 0);
+});
+
+test("the signature verifies over the raw body exactly as sent, the way a receiver checks it", async () => {
+  const merchantId = await createMerchant("raw-body-signature");
+  const endpointUrl = `http://fake-receiver.test/webhook-${randomUUID()}`;
+  const endpoint = await createEndpoint(merchantId, endpointUrl);
+  await enqueueCaptured(merchantId);
+
+  const captured: WebhookTransportRequest[] = [];
+  const transport: WebhookTransport = async (req) => {
+    if (req.url === endpointUrl) captured.push(req);
+    return { statusCode: 200, body: "ok" };
+  };
+  await runDispatchPass(pool, transport, config);
+
+  assert.equal(captured.length, 1);
+  const req = captured[0]!;
+  const header = req.headers[WEBHOOK_SIGNATURE_HEADER]!;
+  const timestamp = /t=(\d+)/.exec(header)![1];
+  const sent = /v1=([0-9a-f]{64})/.exec(header)![1];
+  const overRawBody = createHmac("sha256", endpoint.secret).update(`${timestamp}.${req.body}`).digest("hex");
+  assert.equal(sent, overRawBody, "HMAC over the exact bytes sent must match the signature header");
+});
+
+test("a refund.succeeded event is delivered to the merchant's endpoints", async () => {
+  const merchantId = await createMerchant("refund-webhook");
+  const endpointUrl = `http://fake-receiver.test/webhook-${randomUUID()}`;
+  await createEndpoint(merchantId, endpointUrl);
+  await enqueueEvent(pool, {
+    eventType: "refund.succeeded",
+    aggregateType: "transaction",
+    aggregateId: randomUUID(),
+    payload: { merchantId, refundId: randomUUID(), amountFils: 4_000, feeReversedFils: 100, refundedTotalFils: 4_000, newStatus: "partially_refunded" },
+  });
+
+  const captured: WebhookTransportRequest[] = [];
+  const transport: WebhookTransport = async (req) => {
+    if (req.url === endpointUrl) captured.push(req);
+    return { statusCode: 200, body: "ok" };
+  };
+  await runDispatchPass(pool, transport, config);
+
+  assert.equal(captured.length, 1, "the refund webhook must be sent");
+  const body = JSON.parse(captured[0]!.body) as { type: string; data: { amountFils: number } };
+  assert.equal(body.type, "refund.succeeded");
+  assert.equal(body.data.amountFils, 4_000);
 });

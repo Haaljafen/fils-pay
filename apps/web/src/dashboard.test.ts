@@ -51,8 +51,9 @@ test("dash renders absent values as an em dash but keeps zero", () => {
   assert.equal(dash(0), "0");
 });
 
-test("dayStartIso converts a date input to a UTC day boundary", () => {
-  assert.equal(dayStartIso("2026-09-12"), "2026-09-12T00:00:00.000Z");
+test("dayStartIso converts a date input to its Asia/Bahrain business-day start", () => {
+  // Midnight in Bahrain (UTC+3, no DST), the same day boundary settlement uses.
+  assert.equal(dayStartIso("2026-09-12"), "2026-09-11T21:00:00.000Z");
   assert.equal(dayStartIso(""), undefined);
 });
 
@@ -63,4 +64,9 @@ test("localDateTimeToIso rejects garbage instead of sending Invalid Date", () =>
   const iso = localDateTimeToIso("2026-09-12T14:30");
   assert.notEqual(iso, null);
   assert.equal(new Date(iso ?? "").getTime(), new Date("2026-09-12T14:30").getTime());
+});
+
+test("bhd formats a negative amount (a reconciliation gap can be negative) instead of throwing", () => {
+  assert.equal(bhd(-212), "-0.212 BHD");
+  assert.equal(bhd(-4750), "-4.750 BHD");
 });

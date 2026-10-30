@@ -1,0 +1,14 @@
+# Build context for ops/Dockerfile.node and ops/Dockerfile.go is the repo root.
+# Keep secrets, local state and host-built dependencies out of every image.
+.git
+**/node_modules
+**/dist
+**/*.tsbuildinfo
+.env
+.env.*
+**/.env.local
+ops/.env.docker
+data
+.claude
+.DS_Store
+docs

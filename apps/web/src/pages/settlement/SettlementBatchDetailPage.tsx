@@ -104,6 +104,22 @@ export function SettlementBatchDetailPage() {
         <dd>{bhd(batch.grossFils)}</dd>
         <dt>Fee</dt>
         <dd>{bhd(batch.feeFils)}</dd>
+        <dt>Refunds</dt>
+        <dd>{bhd(batch.refundFils)}</dd>
+        <dt>Fee returned on refunds</dt>
+        <dd>{bhd(batch.feeReversedFils)}</dd>
+        {batch.carryInFils > 0 ? (
+          <>
+            <dt>Shortfall from earlier batches</dt>
+            <dd>{bhd(batch.carryInFils)}</dd>
+          </>
+        ) : null}
+        {batch.carryOutFils > 0 ? (
+          <>
+            <dt>Shortfall carried to the next batch</dt>
+            <dd>{bhd(batch.carryOutFils)}</dd>
+          </>
+        ) : null}
         <dt>Net payout</dt>
         <dd>{bhd(batch.netPayoutFils)}</dd>
         <dt>Closed at</dt>
@@ -125,6 +141,40 @@ export function SettlementBatchDetailPage() {
           ) : null}
         </dd>
       </dl>
+
+      {batch.refunds.length > 0 ? (
+        <>
+          <h2>Refunds netted from this batch</h2>
+          <table className="dash-table">
+            <thead>
+              <tr>
+                <th>Transaction</th>
+                <th>Reference</th>
+                <th>Refunded</th>
+                <th>Fee returned</th>
+                <th>Reason</th>
+                <th>When</th>
+              </tr>
+            </thead>
+            <tbody>
+              {batch.refunds.map((refund) => (
+                <tr key={refund.id}>
+                  <td>
+                    <Link to={`/dashboard/transactions/${refund.transactionId}`}>
+                      <code>{refund.transactionId}</code>
+                    </Link>
+                  </td>
+                  <td>{dash(refund.reference)}</td>
+                  <td>{bhd(refund.amountFils)}</td>
+                  <td>{bhd(refund.feeReversedFils)}</td>
+                  <td>{dash(refund.reason)}</td>
+                  <td>{dateTime(refund.occurredAt)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </>
+      ) : null}
 
       <h2>Included transactions</h2>
       <table className="dash-table">

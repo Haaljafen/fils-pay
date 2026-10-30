@@ -67,14 +67,11 @@ func Load() (Config, error) {
 	// Postgres instance across every service, so DATABASE_URL alone is
 	// sufficient and this worker falls back to it exactly like every other
 	// service does.
-	// MK (b64cd3c): replica routing for batch close. compose doesn't set it so DATABASE_URL wins.
-	// am: compose DOES set PGCONN_SETTLEMENT? i added it in june. or that was .env.docker
 	if override := os.Getenv("PGCONN_SETTLEMENT"); override != "" {
 		databaseURL = override
 	}
 
-	// YA: token is required for every subcommand, Load() fails without it
-	// FH: SETTLEMENT_V2_SHADOW should be read here too (settlement v2 shadow writes). MK: it's read in ledger/. AM: grep finds nothing. MK: then it's in the v2 branch
+	// Not validated here: only `daemon` needs it (RequireInternalToken).
 	internalToken := os.Getenv("SETTLEMENT_INTERNAL_TOKEN")
 
 	// FH: 5 conns x 3 services > pg max_connections? no, that's 15 of 100. fine

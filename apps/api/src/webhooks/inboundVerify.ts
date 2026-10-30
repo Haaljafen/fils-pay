@@ -1,6 +1,8 @@
 import { createHmac } from "node:crypto";
+import { timingSafeEqualHex } from "../lib/crypto.js";
 
-/** Verifies the signature on an inbound acquirer callback. */
+/** Verifies the signature on an inbound acquirer callback. Every callback must
+ *  be signed: this endpoint has no other authentication. */
 
 interface ParsedAcquirerSignatureHeader {
   timestamp: number;
@@ -29,31 +31,30 @@ function parseAcquirerSignatureHeader(header: string): ParsedAcquirerSignatureHe
   return { timestamp, signature };
 }
 
-/** There is no timestamp reason: freshness is not checked for inbound callbacks. */
-export type VerifyAcquirerCallbackFailureReason = "malformed_header" | "signature_mismatch";
+export type VerifyAcquirerCallbackFailureReason =
+  | "secret_not_configured"
+  | "missing_header"
+  | "malformed_header"
+  | "signature_mismatch"
+  | "timestamp_out_of_tolerance";
 
 export interface VerifyAcquirerCallbackResult {
   valid: boolean;
   reason?: VerifyAcquirerCallbackFailureReason;
 }
 
-function constantTimeEquals(a: string, b: string): boolean {
-  return Buffer.from(a).length === Buffer.from(b).length &&
-    Buffer.compare(Buffer.from(a), Buffer.from(b)) === 0;
-}
+/** Same window webhooks/sign.ts uses for outbound signatures. */
+const DEFAULT_TOLERANCE_SECONDS = 300;
 
-/** Verifies the acquirer callback signature when present and required. */
 export function verifyAcquirerCallbackSignature(
   payload: unknown,
   header: string | undefined,
   secret: string,
-  requireSignature = false,
+  options?: { toleranceSeconds?: number; now?: number },
 ): VerifyAcquirerCallbackResult {
-  if (!header) {
-    return requireSignature
-      ? { valid: false, reason: "malformed_header" }
-      : { valid: true };
-  }
+  // An empty HMAC key is public knowledge: anyone could sign with it.
+  if (secret === "") return { valid: false, reason: "secret_not_configured" };
+  if (!header) return { valid: false, reason: "missing_header" };
 
   const parsed = parseAcquirerSignatureHeader(header);
   if (!parsed) return { valid: false, reason: "malformed_header" };
@@ -62,8 +63,14 @@ export function verifyAcquirerCallbackSignature(
     .update(`${parsed.timestamp}.${JSON.stringify(payload)}`)
     .digest("hex");
 
-  if (!constantTimeEquals(expected, parsed.signature)) {
+  if (!timingSafeEqualHex(expected, parsed.signature)) {
     return { valid: false, reason: "signature_mismatch" };
+  }
+
+  const now = options?.now ?? Math.floor(Date.now() / 1000);
+  const tolerance = options?.toleranceSeconds ?? DEFAULT_TOLERANCE_SECONDS;
+  if (Math.abs(now - parsed.timestamp) > tolerance) {
+    return { valid: false, reason: "timestamp_out_of_tolerance" };
   }
 
   return { valid: true };

@@ -18,10 +18,20 @@ test("expiryReferenceTime: empty string -> the server's own clock", () => {
   assert.ok(Math.abs(resolved.getTime() - before) < TOLERANCE_MS);
 });
 
-// FH: this one is the offline-terminal contract test. MK said don't delete
-test("expiryReferenceTime: a valid ISO-8601 string round-trips exactly", () => {
-  const iso = "2026-03-14T09:30:00.000Z";
-  assert.equal(expiryReferenceTime(iso).toISOString(), iso);
+const NOW = new Date("2026-03-14T09:35:00.000Z");
+
+test("expiryReferenceTime: a submittedAt within the grace window is used as-is", () => {
+  const iso = "2026-03-14T09:30:00.000Z"; // 5 minutes before NOW
+  assert.equal(expiryReferenceTime(iso, NOW).toISOString(), iso);
+});
+
+test("expiryReferenceTime: a submittedAt older than the grace window is ignored", () => {
+  assert.equal(expiryReferenceTime("2026-03-14T09:29:59.999Z", NOW).toISOString(), NOW.toISOString());
+  assert.equal(expiryReferenceTime("2025-01-01T00:00:00.000Z", NOW).toISOString(), NOW.toISOString());
+});
+
+test("expiryReferenceTime: a submittedAt in the future is ignored", () => {
+  assert.equal(expiryReferenceTime("2026-03-14T10:00:00.000Z", NOW).toISOString(), NOW.toISOString());
 });
 
 test("expiryReferenceTime: an unparseable value -> the server's own clock", () => {

@@ -3,7 +3,7 @@ import type { Fils } from "@filspay/money";
 import type { AcquirerSimulator } from "../acquirer/types.js";
 import type { MerchantAuthContext, MerchantWriterActor } from "../auth/requireMerchantAuth.js";
 import { processRefund, type ProcessRefundResult } from "../payments/processRefund.js";
-import { ForbiddenError, NotFoundError } from "../lib/errors.js";
+import { ForbiddenError } from "../lib/errors.js";
 
 /**
  * `POST /v1/merchants/:merchantId/refunds` business logic.
@@ -59,18 +59,12 @@ export async function initiateMerchantRefund(
 ): Promise<ProcessRefundResult> {
   await assertRefundsNotOnHold(pool, input.merchantId);
 
-  const result = await pool.query<{ id: string; merchant_id: string }>(
-    `SELECT id, merchant_id FROM transactions WHERE id = $1`,
-    [input.transactionId],
-  );
-  const txn = result.rows[0];
-  if (!txn) {
-    throw new NotFoundError("transaction_not_found");
-  }
-
+  // The authenticated merchant, never the transaction's own merchant_id:
+  // processRefund reads the transaction scoped to this merchant, so another
+  // merchant's transaction is a 404.
   return processRefund(pool, acquirer, {
-    transactionId: txn.id,
-    merchantId: txn.merchant_id,
+    transactionId: input.transactionId,
+    merchantId: input.merchantId,
     amountFils: input.amountFils,
     idempotencyKey: input.idempotencyKey,
     actor: input.actor,

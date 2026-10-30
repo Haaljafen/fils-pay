@@ -150,8 +150,8 @@ export async function captureTransaction(
       return { statusCode: 422, body };
     }
 
-    const merchantResult = await client.query<{ mdr_bps: number }>(
-      `SELECT mdr_bps FROM merchants WHERE id = $1`,
+    const merchantResult = await client.query<{ mdr_bps: number; negotiated_discount_bps: number }>(
+      `SELECT mdr_bps, negotiated_discount_bps FROM merchants WHERE id = $1`,
       [input.merchantId],
     );
     const merchant = merchantResult.rows[0];
@@ -192,8 +192,12 @@ export async function captureTransaction(
     }
 
     // outcome === 'approved'. Integer math throughout — no float ever
-    // enters this path.
-    const feeFils = applyRateFils(requestedAmount, Math.max(0, effectiveMdrBps - volumeTierBonusBps));
+    // enters this path. The negotiated discount reduces the amount the MDR is
+    // charged on (ARCHITECTURE), exactly as apps/settlement's
+    // ComputeSettlementFee does, so the fee booked here is the fee settlement
+    // charges for this event — on every capture path, payment links included.
+    const discountedAmount = subtractFils(requestedAmount, applyRateFils(requestedAmount, merchant.negotiated_discount_bps));
+    const feeFils = applyRateFils(discountedAmount, Math.max(0, effectiveMdrBps - volumeTierBonusBps));
     const newCapturedFils = addFils(capturedSoFar, requestedAmount);
     const newStatus = compareFils(newCapturedFils, amountAuthorized) === 0 ? "captured" : "partially_captured";
 

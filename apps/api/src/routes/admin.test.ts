@@ -141,7 +141,8 @@ async function loginAdmin(email: string): Promise<string> {
     payload: { code: loginBody.devOtpCode },
   });
   assert.equal(verifyRes.statusCode, 200, verifyRes.body);
-  return cookie;
+  // The logged-in cookie is the one verify issues, as in a browser.
+  return parseCookie(verifyRes.headers["set-cookie"], config.adminCookieName);
 }
 
 async function signedInAdmin(role: AdminRole, label: string) {
@@ -282,6 +283,32 @@ test("admin otp verify rejects a wrong code without burning the challenge", asyn
     payload: { code: realCode },
   });
   assert.equal(rightRes.statusCode, 200, rightRes.body);
+});
+
+test("admin OTP verify issues a new token; the pre-OTP token stops working", async () => {
+  const email = `rotate-${randomUUID()}@admin.test`;
+  await pool.query(
+    `INSERT INTO admin_users (email, password_hash, display_name, role) VALUES ($1, $2, 'Rotate Test', 'support')`,
+    [email, await hashPassword(ADMIN_PASSWORD, config)],
+  );
+  const loginRes = await app.inject({ method: "POST", url: "/v1/admin/auth/login", payload: { email, password: ADMIN_PASSWORD } });
+  const { devOtpCode } = loginRes.json() as { devOtpCode: string };
+  const pendingCookie = parseCookie(loginRes.headers["set-cookie"], config.adminCookieName);
+
+  const verifyRes = await app.inject({
+    method: "POST",
+    url: "/v1/admin/auth/otp/verify",
+    headers: { cookie: pendingCookie },
+    payload: { code: devOtpCode },
+  });
+  assert.equal(verifyRes.statusCode, 200, verifyRes.body);
+  const sessionCookie = parseCookie(verifyRes.headers["set-cookie"], config.adminCookieName);
+  assert.notEqual(sessionCookie, pendingCookie, "the token must change at OTP verification");
+
+  const withOld = await app.inject({ method: "GET", url: "/v1/admin/auth/me", headers: { cookie: pendingCookie } });
+  assert.equal(withOld.statusCode, 401);
+  const withNew = await app.inject({ method: "GET", url: "/v1/admin/auth/me", headers: { cookie: sessionCookie } });
+  assert.equal(withNew.statusCode, 200, withNew.body);
 });
 
 test("a merchant session cookie grants nothing on the admin plane", async () => {
@@ -795,9 +822,7 @@ test("GET /v1/admin/merchants/:id 404s for an unknown or malformed id", async ()
 
 // -------------------------------------------------- API key rotation
 
-// "previous key stays active" — grace period for merchants to deploy the new key. intended (am, 2026-05)
-// YA: there was never a grace period in the design. rotation = revoke
-test("API key rotation issues a new key atomically and audits it; the previous key stays active", async () => {
+test("API key rotation revokes the previous key and issues a new one atomically, and audits it", async () => {
   const finance = await signedInAdmin("finance", "rotate");
   const { merchantId, ownerUserId } = await createMerchant("rotate");
   const original = await issueApiKey(pool, config, { merchantId, createdBy: ownerUserId, label: "original" });
@@ -823,14 +848,14 @@ test("API key rotation issues a new key atomically and audits it; the previous k
   assert.ok(rotated.rawKey.startsWith("fp_test_"));
   assert.equal(rotated.prefix, rotated.rawKey.slice(0, 16));
 
-  // The previous key keeps authenticating through the overlap window —
-  // rotation issues a replacement without cutting the old credential off.
+  // Rotation is how a leaked key gets cut off: the previous key stops
+  // authenticating immediately (migration 0037: revoke + reissue).
   const after = await app.inject({
     method: "GET",
     url: "/v1/transactions",
     headers: { authorization: `Bearer ${original.rawKey}` },
   });
-  assert.equal(after.statusCode, 200, "the previous key stays active during the overlap window");
+  assert.equal(after.statusCode, 401, "the previous key must stop working once rotated");
 
   // The new key works too.
   const withNew = await app.inject({
@@ -855,8 +880,8 @@ test("API key rotation issues a new key atomically and audits it; the previous k
   );
   assert.equal(rows.rowCount, 2);
   const [oldRow, newRow] = rows.rows;
-  assert.equal(oldRow!.revoked_at, null, "rotation does not revoke the previous key");
-  assert.equal(oldRow!.revoked_reason, null);
+  assert.ok(oldRow!.revoked_at, "rotation revokes the previous key");
+  assert.equal(oldRow!.revoked_reason, "rotated");
   assert.equal(newRow!.id, rotated.id);
   assert.equal(newRow!.revoked_at, null);
   assert.equal(newRow!.created_by, null, "0037's XOR: an admin-issued key has no merchant_users actor");
@@ -1171,6 +1196,57 @@ test("a support impersonation grant reads merchant data but cannot perform owner
   );
   assert.equal(audit.rows[0]!.target_id, merchantId);
   assert.equal(audit.rows[1]!.target_id, merchantId);
+});
+
+async function startImpersonationAs(role: "support" | "finance" | "super_admin", label: string) {
+  const admin = await signedInAdmin(role, label);
+  const { merchantId } = await createMerchant(label);
+  const startRes = await app.inject({
+    method: "POST",
+    url: `/v1/admin/merchants/${merchantId}/impersonate`,
+    headers: { cookie: admin.cookie },
+  });
+  assert.equal(startRes.statusCode, 201, startRes.body);
+  return { admin, merchantId, impCookie: parseCookie(startRes.headers["set-cookie"], config.impersonationCookieName) };
+}
+
+for (const role of ["finance", "super_admin"] as const) {
+  test(`a ${role} impersonation grant is read-only too: no owner/finance writes`, async () => {
+    const { merchantId, impCookie } = await startImpersonationAs(role, `imp-${role}`);
+
+    const read = await app.inject({ method: "GET", url: "/v1/transactions", headers: { cookie: impCookie } });
+    assert.equal(read.statusCode, 200, read.body);
+
+    const createLink = await app.inject({
+      method: "POST",
+      url: `/v1/merchants/${merchantId}/payment-links`,
+      headers: { cookie: impCookie },
+      payload: { amountFils: 1000, expiresAt: new Date(Date.now() + 3_600_000).toISOString() },
+    });
+    assert.equal(createLink.statusCode, 403, createLink.body);
+  });
+}
+
+test("an impersonation grant cannot move money on routes with no role gate (capture/void)", async () => {
+  const { impCookie } = await startImpersonationAs("support", "imp-void");
+
+  for (const action of ["capture", "void"]) {
+    const res = await app.inject({
+      method: "POST",
+      url: `/v1/transactions/${randomUUID()}/${action}`,
+      headers: { cookie: impCookie, "idempotency-key": randomUUID() },
+      payload: {},
+    });
+    assert.equal(res.statusCode, 403, `${action}: ${res.body}`);
+  }
+});
+
+test("disabling an admin kills their live impersonation grant", async () => {
+  const { admin, impCookie } = await startImpersonationAs("support", "imp-disabled");
+  await pool.query(`UPDATE admin_users SET status = 'disabled' WHERE id = $1`, [admin.id]);
+
+  const res = await app.inject({ method: "GET", url: "/v1/transactions", headers: { cookie: impCookie } });
+  assert.equal(res.statusCode, 401, res.body);
 });
 
 test("an expired impersonation grant stops working without anyone ending it", async () => {

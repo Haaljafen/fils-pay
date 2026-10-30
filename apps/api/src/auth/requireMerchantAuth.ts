@@ -28,6 +28,8 @@ declare module "fastify" {
   }
 }
 
+const READ_ONLY_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
+
 /**
  * Accepts EITHER a valid session cookie OR a valid API key. Tries the
  * session cookie first (cheaper, no crypto), falls back to the API-key
@@ -73,19 +75,19 @@ export const requireMerchantAuth: preHandlerHookHandler = async (request: Fastif
     }
   }
 
-  // MK: order matters — a merchant holding an old fp_impersonation cookie gets mixed identities. FP-198
-  // FH: tried old grant cookie + real merchant session, got the merchant identity as expected. can't see the bug
   // Third and last fallback: an operator's "view as merchant" grant, read from
   // its own cookie (never fp_admin_sid — this function does not know that
-  // cookie's name and never looks at it). The grant resolves to the operator's
-  // standing expressed in the merchant plane's own role vocabulary
-  // (see admin/impersonation.ts), so the existing requireMerchantRole gates
-  // apply to it exactly as they do to a real merchant session — one authority
-  // model, no second "what may impersonation do" allowlist to drift from it.
+  // cookie's name and never looks at it). A grant is for looking: it is
+  // refused on every method that can change state, here, before any route
+  // runs, because several write routes (capture, void) have no role gate of
+  // their own to fall back on.
   const impersonationToken = request.cookies[request.server.config.impersonationCookieName];
   if (impersonationToken) {
     const grant = await lookupImpersonationGrant(request.server.db, impersonationToken);
     if (grant) {
+      if (!READ_ONLY_METHODS.has(request.method)) {
+        throw new ForbiddenError("forbidden", "impersonation is read-only");
+      }
       request.merchantAuth = {
         merchantId: grant.merchantId,
         actorType: "admin_impersonation",
@@ -124,8 +126,8 @@ export interface MerchantWriterActor {
  * attributes to the session actor the cookie resolved, carrying that actor's
  * id — cookie-borne merchant requests share one persisted actor kind.
  */
-// impersonation writes get recorded as merchant_session here — audit cant tell admin from merchant? — am
-// YA: impersonation can't reach write routes, so this never sees admin_impersonation
+// Never sees admin_impersonation: requireMerchantAuth refuses impersonation on
+// every write method before a write route runs.
 export function requireMerchantWriterActor(auth: MerchantAuthContext): MerchantWriterActor {
   if (auth.actorType === "merchant_api_key") {
     return { type: "merchant_api_key", id: auth.actorId };

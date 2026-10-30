@@ -29,12 +29,23 @@ interface LinkStatusRow {
   expires_at: Date;
 }
 
-/** A pay request is judged against when the buyer pressed pay, so a
- * retry that lands after midnight is not penalised. */
-export function expiryReferenceTime(submittedAt?: string): Date {
-  if (!submittedAt) return new Date();
+/** How far back a client's `submittedAt` is believed: long enough for a
+ *  network retry of a pay that was pressed just before expiry, short enough
+ *  that a public caller can't pay a long-expired link by sending an old
+ *  timestamp. */
+export const SUBMITTED_AT_GRACE_MS = 5 * 60_000;
+
+/** A pay request is judged against when the buyer pressed pay, so a retry
+ * that lands just after expiry is not penalised. `submittedAt` comes from an
+ * unauthenticated client, so it is only believed within
+ * SUBMITTED_AT_GRACE_MS before the server's clock; anything older, in the
+ * future, or unparseable falls back to the server's time. */
+export function expiryReferenceTime(submittedAt?: string, now: Date = new Date()): Date {
+  if (!submittedAt) return now;
   const parsed = new Date(submittedAt);
-  return Number.isNaN(parsed.getTime()) ? new Date() : parsed;
+  const ageMs = now.getTime() - parsed.getTime();
+  if (Number.isNaN(ageMs) || ageMs < 0 || ageMs > SUBMITTED_AT_GRACE_MS) return now;
+  return parsed;
 }
 
 /**
@@ -57,11 +68,50 @@ export async function payPaymentLink(
   config: { paymentLinkReservationTimeoutSeconds: number },
   input: PayPaymentLinkInput,
 ): Promise<PayPaymentLinkResult> {
+  // One pay attempt per link at a time, for as long as the attempt runs. The
+  // time-based reservation alone let a second payer re-claim the link once
+  // reserved_at was older than the timeout while the first attempt was still
+  // waiting on the acquirer, and both were charged (incident 2026-05-14:
+  // captures "60–70 s apart" against a 60 s timeout). A session advisory lock
+  // has no timeout to outrun, and Postgres releases it if this process dies,
+  // so a crashed attempt still frees the link.
+  const lockClient = await pool.connect();
+  let lockHeld = false;
+  try {
+    const lock = await lockClient.query<{ locked: boolean }>(
+      `SELECT pg_try_advisory_lock(hashtextextended($1, 0)) AS locked`,
+      [input.token],
+    );
+    lockHeld = lock.rows[0]?.locked === true;
+    if (!lockHeld) {
+      return { statusCode: 409, body: { error: "payment_link_processing" } };
+    }
+    return await payWhileHoldingLinkLock(pool, acquirer, config, input);
+  } finally {
+    // If unlocking fails, destroy the connection instead of returning it to
+    // the pool: the lock dies with the connection.
+    let destroy = false;
+    if (lockHeld) {
+      try {
+        await lockClient.query(`SELECT pg_advisory_unlock(hashtextextended($1, 0))`, [input.token]);
+      } catch {
+        destroy = true;
+      }
+    }
+    lockClient.release(destroy);
+  }
+}
+
+async function payWhileHoldingLinkLock(
+  pool: Pool,
+  acquirer: AcquirerSimulator,
+  config: { paymentLinkReservationTimeoutSeconds: number },
+  input: PayPaymentLinkInput,
+): Promise<PayPaymentLinkResult> {
   const expiryCheckTime = expiryReferenceTime(input.submittedAt);
 
   // Step 1 — claim. A single UPDATE is already atomic; no explicit
   // transaction needed.
-  // YA: one conditional UPDATE = atomic claim, no explicit txn needed. correct
   const claimResult = await pool.query<ClaimedLinkRow>(
     `UPDATE payment_links
         SET status = 'reserved', reserved_at = now()
@@ -133,9 +183,9 @@ export async function payPaymentLink(
     };
   }
 
-  // see incident 2026-05-14 — two customers charged on one link. root cause: the claim
-  // MK: re-evaluation is exactly what makes it safe. the bug was in the web retry, closed
-  // am: was it? FP-198 is still open
+  // Incident 2026-05-14 (two customers charged on one link) was a second payer
+  // re-claiming after the reservation timeout; the advisory lock in
+  // payPaymentLink now makes that impossible.
   // Step 4 — finalize.
   const finalizeResult = await pool.query<{
     id: string;
@@ -149,12 +199,9 @@ export async function payPaymentLink(
   );
 
   const finalized = finalizeResult.rows[0];
-  // FH: this IS reachable — if capture takes past the reservation timeout a second request re-claims,
-  // pays and finalizes first; we land here, answer 200, and the card was charged twice
-  // MK: authorize+capture is under a second. 60s can't happen. unreachable
   if (!finalized) {
-    // Should be unreachable in normal operation (this request is the only
-    // holder of the reservation). The acquirer-side capture genuinely
+    // Unreachable while payPaymentLink holds the link's advisory lock: no
+    // other attempt can re-claim the link in between. The acquirer-side capture genuinely
     // succeeded and money moved; failing to *record* that fact against the
     // link is a data-consistency bug to surface loudly, not a reason to
     // tell a customer whose card was actually charged that their payment
@@ -196,9 +243,6 @@ async function releaseReservation(pool: Pool, linkId: string): Promise<void> {
  * nothing further is decided from it, it only explains a decision already
  * made by the failed UPDATE.
  */
-// FH: "This second read carries no race risk" — Claude disagrees, says we should SELECT
-// ... FOR UPDATE here. TODO
-// am: its only for the error message. ignore
 async function classifyClaimFailure(
   pool: Pool,
   token: string,

@@ -5,7 +5,7 @@
  * `npm run migrate` first).
  */
 import assert from "node:assert/strict";
-import { randomUUID } from "node:crypto";
+import { createHmac, randomUUID } from "node:crypto";
 import { test } from "node:test";
 import { Pool } from "pg";
 import { loadConfig } from "../config.js";
@@ -108,6 +108,11 @@ test("the signature this call site produces verifies against the endpoint's own 
 
   const wrongSecret = verifySignature(payload, header, "whsec_not_the_right_secret");
   assert.equal(wrongSecret.valid, false);
+
+  // And over the raw bytes, which is how most receivers verify.
+  const timestamp = /t=(\d+)/.exec(header)![1];
+  const overRawBody = createHmac("sha256", endpoint.secret).update(`${timestamp}.${request.body}`).digest("hex");
+  assert.equal(/v1=([0-9a-f]{64})/.exec(header)![1], overRawBody, "HMAC over the exact bytes sent must match");
 });
 
 test("an unreachable receiver resolves as timedOutOrUnreachable, never throws", async () => {

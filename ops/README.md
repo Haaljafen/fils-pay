@@ -2,11 +2,12 @@
 
 Local development stack for FilsPay: Postgres plus the three services that
 talk to it directly (apps/api, apps/settlement, apps/reporting). The hosted
-demo instance uses the same compose file with a different `.env`.
+demo instance uses the same compose file with its own `ops/.env.docker`.
 
 ## Quick start
 
 ```
+cp ops/.env.docker.example ops/.env.docker   # once; then set SETTLEMENT_INTERNAL_TOKEN
 docker compose -f ops/docker-compose.yml up -d postgres
 docker compose -f ops/docker-compose.yml run --rm migrate
 docker compose -f ops/docker-compose.yml run --rm seed
@@ -22,13 +23,11 @@ each package), not services with their own database connection.
 | File | Purpose |
 |---|---|
 | `docker-compose.yml` | the stack |
-| `.env.docker` | shared service settings, loaded by compose for every service |
-| `Dockerfile.node` | image for api, reporting, migrate and seed (`node:20`, full install) |
-| `Dockerfile.go` | multi-stage build of `apps/settlement` |
-
-> **AM (July):** the two Dockerfiles aren't in the repo for me. built my own
->
-> **MK:** they were in the initial ops commit. check you're on main
+| `.env.docker.example` | template for `.env.docker` (committed, no secrets) |
+| `.env.docker` | secrets and `NODE_ENV`, loaded by api, settlement, reporting and seed via `env_file:` (gitignored) |
+| `Dockerfile.node` | image for api, reporting, migrate and seed (`node:22-slim`, dev dependencies included because services run through `tsx`) |
+| `Dockerfile.go` | multi-stage build of `apps/settlement`; final image is the static binary on distroless (~20 MB) |
+| `../.dockerignore` | keeps `.git`, `node_modules`, `.env*` and `ops/.env.docker` out of every image |
 
 ## Database
 
@@ -42,26 +41,31 @@ which never carries traffic outside the host, so there's no untrusted hop
 for a connection to cross.
 
 The settlement worker can be given a second connection string,
-`PGCONN_SETTLEMENT`, for its batch-close pool. It only takes effect when
-`DATABASE_URL` is unset.
+`PGCONN_SETTLEMENT`. When set, it overrides `DATABASE_URL` for that service.
 
-To reset the database to a clean, freshly-seeded state at any point, re-run
-the `seed` job above — `db/seed/index.ts` truncates and regenerates its
-fixture tables on every invocation; it doesn't need the volume removed
-first.
+To reset the local database to a clean, freshly-seeded state, re-run the
+`seed` job above. `db/seed/index.ts` truncates its fixture tables with
+`CASCADE` (which also empties every table that references them) and
+regenerates them. It only runs against `localhost` or the compose `postgres`
+host, and never with `NODE_ENV=production`; `SEED_ALLOW_RESET=1` overrides
+the host check for a database you are sure is disposable.
 
 ## Required settings per service
 
 | Service | Needs | Where it comes from in compose |
 |---|---|---|
 | api | `DATABASE_URL`, `SETTLEMENT_INTERNAL_URL` | `environment:` |
-| api | `WEBHOOK_SECRET_ENCRYPTION_KEY` | only outside dev; a dev key is used otherwise |
+| api, seed | `WEBHOOK_SECRET_ENCRYPTION_KEY` | `.env.docker`; optional in development (a fixed dev key is used) |
 | api | `ACQUIRER_CALLBACK_SIGNING_SECRET`, `NODE_ENV` | `.env.docker` |
+| api | `CHECKOUT_BASE_URL` (https, required in production) | `.env.docker` |
+| api, settlement | `SETTLEMENT_INTERNAL_TOKEN` (same value on both) | `.env.docker`; settlement exits at boot without it |
 | settlement | `DATABASE_URL` | `environment:` |
-| settlement | `SETTLEMENT_INTERNAL_TOKEN` | defaults to `dev-token` |
 | reporting | `DATABASE_URL` | `environment:`; runs `worker` by default |
 
-> **MK:** the api won't boot without WEBHOOK_SECRET_ENCRYPTION_KEY in any environment. set it on the hosted box.
+With `NODE_ENV=production` the api won't boot without
+`WEBHOOK_SECRET_ENCRYPTION_KEY`. Generate one per environment with
+`openssl rand -base64 32` and keep it: changing it makes every stored webhook
+secret undecryptable.
 
 ## Resource sizing
 

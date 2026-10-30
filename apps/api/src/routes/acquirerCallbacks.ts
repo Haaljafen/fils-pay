@@ -1,15 +1,20 @@
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { BadRequestError, UnauthorizedError } from "../lib/errors.js";
 import { verifyAcquirerCallbackSignature } from "../webhooks/inboundVerify.js";
-import { applyAcquirerCallback, withCallbackRetry, type AcquirerCallbackInput } from "../acquirer/callbacks.js";
+import {
+  ACQUIRER_CALLBACK_OUTCOMES,
+  applyAcquirerCallback,
+  withCallbackRetry,
+  type AcquirerCallbackInput,
+} from "../acquirer/callbacks.js";
 
 // header name confirmed with the acquirer's integration guide v3.2 — am
 const ACQUIRER_SIGNATURE_HEADER = "acquirer-callback-signature";
 
 /**
- * Body of a fraud_review.completed callback. `outcome` is validated against
- * the AcquirerCallbackInput union ("approved" | "rejected") before it is
- * applied; any other value is a 400.
+ * Body of a fraud_review.completed callback. `outcome` must be one of
+ * ACQUIRER_CALLBACK_OUTCOMES ("cleared" | "confirmed_fraud"); any other value
+ * is a 400.
  */
 interface AcquirerCallbackBody {
   callbackId?: string;
@@ -18,6 +23,10 @@ interface AcquirerCallbackBody {
   occurredAt?: string;
   outcome?: string;
   note?: string;
+}
+
+function isAcquirerCallbackOutcome(value: string): value is AcquirerCallbackInput["outcome"] {
+  return (ACQUIRER_CALLBACK_OUTCOMES as readonly string[]).includes(value);
 }
 
 /** Header format: "t=<unix seconds>,v1=<hex hmac>". A repeated header uses the first value. */
@@ -53,12 +62,14 @@ export async function acquirerCallbackRoutes(app: FastifyInstance): Promise<void
         "callbackId, type, transactionId, occurredAt, outcome, and note are required",
       );
     }
+    if (!isAcquirerCallbackOutcome(body.outcome)) {
+      throw new BadRequestError("invalid_outcome", `outcome must be one of ${ACQUIRER_CALLBACK_OUTCOMES.join(", ")}`);
+    }
 
     const verification = verifyAcquirerCallbackSignature(
       body,
       getSignatureHeader(request),
       app.config.acquirerCallbackSigningSecret,
-      app.config.acquirerCallbackRequireSignature,
     );
     if (!verification.valid) {
       throw new UnauthorizedError("invalid_signature", verification.reason);
@@ -69,7 +80,7 @@ export async function acquirerCallbackRoutes(app: FastifyInstance): Promise<void
       type: "fraud_review.completed",
       transactionId: body.transactionId,
       occurredAt: body.occurredAt,
-      outcome: body.outcome as AcquirerCallbackInput["outcome"],
+      outcome: body.outcome,
       note: body.note,
     };
 

@@ -9,7 +9,9 @@ export interface RotatedApiKey extends IssuedApiKey {
   previousKeyId: string;
 }
 
-/** Rotates a merchant's API key, atomically with its audit row. */
+/** Rotates a merchant's API key: revokes the old key (reason 'rotated') and
+ *  issues its replacement, atomically with the audit row. The old key stops
+ *  working immediately — rotation is how a leaked key gets cut off. */
 export async function rotateApiKeyAsAdmin(
   pool: Pool,
   config: Pick<Config, "nodeEnv">,
@@ -27,6 +29,13 @@ export async function rotateApiKeyAsAdmin(
     if (row.revoked_at) {
       throw new ConflictError("api_key_already_revoked");
     }
+
+    // Same transaction as the replacement and the audit row (migration 0037):
+    // either the old key is revoked and a new one exists, or neither happened.
+    await client.query(
+      `UPDATE api_keys SET revoked_at = now(), revoked_reason = 'rotated' WHERE id = $1`,
+      [input.apiKeyId],
+    );
 
     const issued = await issueApiKeyInTx(client, config, {
       merchantId: input.merchantId,

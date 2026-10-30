@@ -13,6 +13,7 @@ import {
   type GeneratedTransaction,
 } from "./fixtures/transactions.js";
 import { SEED, createRng } from "./rng.js";
+import { assertSeedTargetIsResettable } from "./guard.js";
 
 // Password auth, business profiles, and KYC approval for the fixture
 // merchants/users. These import the *actual*
@@ -181,6 +182,11 @@ interface InsertedMerchant {
  * connection.
  */
 export async function generate(pool: Pool): Promise<SeedSummary> {
+  assertSeedTargetIsResettable(
+    { connectionString: pool.options.connectionString, host: pool.options.host },
+    process.env,
+  );
+
   const rng = createRng(SEED);
   const config = loadConfig(process.env);
   const passwordHash = await hashPassword(SEED_USER_PASSWORD, config);
@@ -207,8 +213,8 @@ export async function generate(pool: Pool): Promise<SeedSummary> {
   try {
     await client.query("BEGIN");
     try {
-      // AM: only touches the fixture tables listed in TABLES_TO_RESET, so it's
-      // safe to run against a shared/staging database. (see RUNBOOK)
+      // CASCADE also empties every table that references these, so this is
+      // only safe on a disposable database — see assertSeedTargetIsResettable.
       await client.query(`TRUNCATE TABLE ${TABLES_TO_RESET.join(", ")} RESTART IDENTITY CASCADE`);
 
       // Admin staff fixtures. Ids come from the database's own

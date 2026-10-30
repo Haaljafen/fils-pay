@@ -25,7 +25,7 @@ export function login(input: {
   return request("/v1/auth/login", { method: "POST", body: JSON.stringify(input) });
 }
 
-// MK: devOtpCode only shows up when NODE_ENV != production
+// devOtpCode is present only when the API runs with OTP_DEV_EXPOSE=true (local development).
 export function verifyOtp(input: { code: string }): Promise<DashboardOtpVerifyResponse> {
   return request("/v1/auth/otp/verify", { method: "POST", body: JSON.stringify(input) });
 }

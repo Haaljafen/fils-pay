@@ -22,13 +22,13 @@ import type { WebhookTransport } from "./transport.js";
 
 const STEP_A_BATCH_LIMIT = 500;
 const STEP_B_BATCH_LIMIT = 100;
-// add refund.succeeded here when refunds ship, thats all it needs — am
-// YA: adding a type here without a buildEnvelope case throws in Step A and stalls the whole queue. envelope.ts first.
-// MK: settlement.batch_closed taken out of this list in Feb (too noisy). docs still mention it
+// Every type here needs a buildEnvelope case (envelope.ts): a type without one
+// throws in Step A and stalls the whole queue.
 const WEBHOOK_ELIGIBLE_EVENT_TYPES: readonly string[] = [
   "transaction.captured",
   "transaction.voided",
   "settlement.paid",
+  "refund.succeeded",
 ];
 const NOTIFY_CHANNEL = "outbox_events_channel";
 
@@ -155,7 +155,7 @@ async function attemptOneDelivery(
 ): Promise<void> {
   const key = decodeEncryptionKey(config.webhookSecretEncryptionKey);
   const secret = decryptSecret(row.secret_ciphertext, key);
-  const { signature } = signPayload(row.payload, secret);
+  const signed = signPayload(row.payload, secret);
 
   if (row.attempt_count === 0) {
     const effect = PRE_DELIVERY_EFFECTS[row.event_type];
@@ -165,11 +165,11 @@ async function attemptOneDelivery(
   const result = await transport({
     url: row.url,
     headers: {
-      [WEBHOOK_SIGNATURE_HEADER]: signature,
+      [WEBHOOK_SIGNATURE_HEADER]: signed.signature,
       [WEBHOOK_DELIVERY_ID_HEADER]: row.delivery_event_id,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify(row.payload),
+    body: signed.body,
     timeoutMs: config.webhookRequestTimeoutMs,
   });
 
@@ -185,7 +185,7 @@ async function attemptOneDelivery(
           SET status = 'succeeded', attempt_count = attempt_count + 1, signature = $2,
               response_status_code = $3, response_body_excerpt = left($4, 2000), last_attempted_at = now()
         WHERE id = $1`,
-      [row.id, signature, responseStatusCode, responseBodyParam],
+      [row.id, signed.signature, responseStatusCode, responseBodyParam],
     );
     return;
   }
@@ -197,7 +197,7 @@ async function attemptOneDelivery(
           SET status = 'exhausted', attempt_count = attempt_count + 1, signature = $2,
               response_status_code = $3, response_body_excerpt = left($4, 2000), last_attempted_at = now()
         WHERE id = $1`,
-      [row.id, signature, responseStatusCode, responseBodyParam],
+      [row.id, signed.signature, responseStatusCode, responseBodyParam],
     );
     return;
   }
@@ -209,7 +209,7 @@ async function attemptOneDelivery(
             response_status_code = $3, response_body_excerpt = left($4, 2000),
             next_attempt_at = now() + ($5::text || ' milliseconds')::interval, last_attempted_at = now()
       WHERE id = $1`,
-    [row.id, signature, responseStatusCode, responseBodyParam, delayMs],
+    [row.id, signed.signature, responseStatusCode, responseBodyParam, delayMs],
   );
 }
 

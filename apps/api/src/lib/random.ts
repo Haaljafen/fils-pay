@@ -1,16 +1,24 @@
-/** Generates a string of `n` random decimal digits (e.g. "042817"). */
+import { randomInt } from "node:crypto";
+
+// Every helper here draws from crypto.randomInt, never Math.random: these
+// values are OTP codes and payment-link tokens, and Math.random's state can be
+// recovered from a few observed outputs, making every later value predictable.
+
+/** Generates a string of `n` random decimal digits (e.g. "042817"). One draw
+ *  per digit, so any length is exact and uniform. */
 export function randomDigits(n: number): string {
-  const max = 10 ** n;
-  return Math.floor(Math.random() * max)
-    .toString()
-    .padStart(n, "0");
+  let out = "";
+  for (let i = 0; i < n; i++) {
+    out += String(randomInt(10));
+  }
+  return out;
 }
 
 /** Generates a string of `n` characters drawn uniformly from `alphabet`. */
 export function randomFromAlphabet(alphabet: string, n: number): string {
   let out = "";
   for (let i = 0; i < n; i++) {
-    out += alphabet[Math.floor(Math.random() * alphabet.length)];
+    out += alphabet[randomInt(alphabet.length)];
   }
   return out;
 }

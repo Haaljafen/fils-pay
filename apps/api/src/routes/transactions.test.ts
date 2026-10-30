@@ -12,6 +12,7 @@ import { buildApp } from "../app.js";
 import { loadConfig } from "../config.js";
 import { issueApiKey } from "../apiKeys/issue.js";
 import { recordKycReview } from "../onboarding/review.js";
+import { randomToken, sha256Hex } from "../lib/crypto.js";
 
 const databaseUrl = process.env.DATABASE_URL;
 if (!databaseUrl) {
@@ -175,6 +176,54 @@ test("authorize -> void happy path releases the hold and transitions to voided",
   assert.equal(hold.rows[0]!.status, "released");
 });
 
+/** A logged-in (OTP-verified) dashboard user of `role` at `merchantId`, as the
+ *  cookie header their browser would send. */
+async function sessionCookieFor(merchantId: string, role: "owner" | "finance" | "support"): Promise<string> {
+  const user = await pool.query<{ id: string }>(
+    `INSERT INTO merchant_users (merchant_id, email, role, password_hash)
+     VALUES ($1, $2, $3, 'unused-in-these-tests') RETURNING id`,
+    [merchantId, `${role}-${randomUUID()}@example.test`, role],
+  );
+  const rawToken = randomToken(32);
+  await pool.query(
+    `INSERT INTO sessions (merchant_user_id, token_hash, authenticated, expires_at)
+     VALUES ($1, $2, true, now() + interval '1 hour')`,
+    [user.rows[0]!.id, sha256Hex(rawToken)],
+  );
+  return `${config.cookieName}=${rawToken}`;
+}
+
+test("a support dashboard user cannot capture or void; the transaction is untouched", async () => {
+  const { merchantId, rawKey } = await createApprovedMerchantWithApiKey("support-no-money");
+  const txn = await authorize(rawKey, 5_000);
+  const supportCookie = await sessionCookieFor(merchantId, "support");
+
+  for (const action of ["capture", "void"]) {
+    const res = await app.inject({
+      method: "POST",
+      url: `/v1/transactions/${txn.id}/${action}`,
+      headers: { cookie: supportCookie, "idempotency-key": randomUUID() },
+      payload: {},
+    });
+    assert.equal(res.statusCode, 403, `${action}: ${res.body}`);
+  }
+
+  const row = await pool.query<{ status: string }>(`SELECT status FROM transactions WHERE id = $1`, [txn.id]);
+  assert.equal(row.rows[0]!.status, "authorized");
+});
+
+test("a finance dashboard user can still void", async () => {
+  const { merchantId, rawKey } = await createApprovedMerchantWithApiKey("finance-void");
+  const txn = await authorize(rawKey, 5_000);
+
+  const res = await app.inject({
+    method: "POST",
+    url: `/v1/transactions/${txn.id}/void`,
+    headers: { cookie: await sessionCookieFor(merchantId, "finance") },
+  });
+  assert.equal(res.statusCode, 200, res.body);
+});
+
 test("void on an already-captured transaction is rejected 409", async () => {
   const { rawKey } = await createApprovedMerchantWithApiKey("void-after-capture");
   const txn = await authorize(rawKey, 3_000);
@@ -288,14 +337,51 @@ test("GET /v1/transactions/:id/events returns the timeline in chronological orde
 
 // delete/replace this when FP-212 lands — am
 // MK: keep it until the route is behind the feature flag (REFUNDS_V2), then flip the assertion
-test("POST /v1/refunds returns 501 not_implemented", async () => {
-  const { rawKey } = await createApprovedMerchantWithApiKey("refund-stub");
-  const res = await app.inject({
+function refundRequest(merchantId: string, headers: Record<string, string>, payload: Record<string, unknown>) {
+  return app.inject({
     method: "POST",
-    url: "/v1/refunds",
-    headers: authHeader(rawKey),
-    payload: {},
+    url: `/v1/merchants/${merchantId}/refunds`,
+    headers: { "idempotency-key": randomUUID(), ...headers },
+    payload,
   });
-  assert.equal(res.statusCode, 501, res.body);
-  assert.equal(res.json().error, "not_implemented");
+}
+
+test("refunds over HTTP: partial then the rest, timeline and status follow", async () => {
+  const { merchantId, rawKey } = await createApprovedMerchantWithApiKey("refund-http");
+  const txn = await authorize(rawKey, 10_000);
+  assert.equal((await capture(rawKey, txn.id)).statusCode, 200);
+
+  const partial = await refundRequest(merchantId, authHeader(rawKey), { transactionId: txn.id, amountFils: 4_000, reason: "damaged item" });
+  assert.equal(partial.statusCode, 200, partial.body);
+  assert.equal(partial.json().transactionStatus, "partially_refunded");
+
+  const rest = await refundRequest(merchantId, authHeader(rawKey), { transactionId: txn.id });
+  assert.equal(rest.statusCode, 200, rest.body);
+  assert.equal(rest.json().amountFils, 6_000);
+  assert.equal(rest.json().transactionStatus, "refunded");
+
+  const timeline = await app.inject({ method: "GET", url: `/v1/transactions/${txn.id}/events`, headers: authHeader(rawKey) });
+  const events = timeline.json() as Array<{ eventType: string; amountFils: number | null }>;
+  assert.deepEqual(events.slice(-2).map((e) => [e.eventType, e.amountFils]), [["refund_partial", -4_000], ["refunded", -6_000]]);
+});
+
+test("refunds: a support user is refused, another merchant's path is refused, the key is required", async () => {
+  const { merchantId, rawKey } = await createApprovedMerchantWithApiKey("refund-guards");
+  const txn = await authorize(rawKey, 5_000);
+  assert.equal((await capture(rawKey, txn.id)).statusCode, 200);
+
+  const support = await refundRequest(merchantId, { cookie: await sessionCookieFor(merchantId, "support") }, { transactionId: txn.id });
+  assert.equal(support.statusCode, 403, support.body);
+
+  const other = await createApprovedMerchantWithApiKey("refund-guards-other");
+  const crossPath = await refundRequest(other.merchantId, authHeader(rawKey), { transactionId: txn.id });
+  assert.equal(crossPath.statusCode, 403, crossPath.body);
+
+  const noKey = await app.inject({
+    method: "POST",
+    url: `/v1/merchants/${merchantId}/refunds`,
+    headers: authHeader(rawKey),
+    payload: { transactionId: txn.id },
+  });
+  assert.equal(noKey.statusCode, 400, noKey.body);
 });

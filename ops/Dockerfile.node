@@ -1,0 +1,30 @@
+# Image for the api, reporting, migrate and seed services in
+# ops/docker-compose.yml. Build context is the repo root. Each service picks
+# its own command; the services run TypeScript directly through tsx, so dev
+# dependencies are installed too.
+FROM node:22-slim
+
+WORKDIR /app
+
+# Dependencies first, so source edits don't invalidate the install layer.
+# npm ci needs every workspace's package.json to match the lockfile, including
+# apps/web and apps/admin, even though their source isn't copied.
+COPY package.json package-lock.json tsconfig.base.json tsconfig.json ./
+COPY packages/money/package.json packages/money/
+COPY packages/events/package.json packages/events/
+COPY apps/api/package.json apps/api/
+COPY apps/reporting/package.json apps/reporting/
+COPY apps/web/package.json apps/web/
+COPY apps/admin/package.json apps/admin/
+RUN npm ci --no-audit --no-fund && npm cache clean --force
+
+COPY packages packages
+COPY apps/api apps/api
+COPY apps/reporting apps/reporting
+COPY db db
+COPY scripts scripts
+
+# KYC uploads are written under ./data (KYC_UPLOAD_DIR default); compose
+# mounts a volume here so they survive container restarts.
+RUN mkdir -p /app/data && chown node:node /app/data
+USER node

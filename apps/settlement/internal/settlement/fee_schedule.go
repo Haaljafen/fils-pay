@@ -8,9 +8,6 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-// Platform default MDR: 2.50% (250 basis points).
-const defaultMdrBps int64 = 250
-
 // FeeScheduleRow is one merchant's negotiated-rate record, effective from a
 // specific instant. Mirrors apps/api/src/fees/feeSchedule.ts's TypeScript
 // twin exactly — same table, same resolution rule, so a fee computed at

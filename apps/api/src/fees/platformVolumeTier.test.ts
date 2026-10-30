@@ -20,12 +20,15 @@ const pool = new Pool({ connectionString: databaseUrl, max: 5 });
 test.after(async () => {
   // Leave the counter where a fresh seed leaves it, so a test run never
   // changes what a subsequent settlement pass reads.
-  await pool.query(`UPDATE platform_stats SET total_processed_fils = 0 WHERE id = 1`);
+  await pool.query(`UPDATE platform_stats SET total_processed_fils = 0, volume_tier_enabled = false WHERE id = 1`);
   await pool.end();
 });
 
-async function setTotal(totalProcessedFils: number): Promise<void> {
-  await pool.query(`UPDATE platform_stats SET total_processed_fils = $1 WHERE id = 1`, [totalProcessedFils]);
+async function setTotal(totalProcessedFils: number, tierEnabled = false): Promise<void> {
+  await pool.query(`UPDATE platform_stats SET total_processed_fils = $1, volume_tier_enabled = $2 WHERE id = 1`, [
+    totalProcessedFils,
+    tierEnabled,
+  ]);
 }
 
 async function withClient<T>(fn: (client: PoolClient) => Promise<T>): Promise<T> {
@@ -48,13 +51,17 @@ test("no bonus just below the volume tier threshold", async () => {
   assert.equal(await withClient(getVolumeTierBonusBps), 0);
 });
 
-// am: should test right at int32 max too? nvm its bigint
-test("15bps once lifetime processed volume reaches the threshold", async () => {
-  await setTotal(2_000_000_000);
+test("no bonus past the threshold while the tier is not enabled (the default; never approved)", async () => {
+  await setTotal(2_100_000_000);
+  assert.equal(await withClient(getVolumeTierBonusBps), 0);
+});
+
+test("15bps once enabled and lifetime processed volume reaches the threshold", async () => {
+  await setTotal(2_000_000_000, true);
   assert.equal(await withClient(getVolumeTierBonusBps), 15);
 });
 
-test("the tier stays granted above the threshold", async () => {
-  await setTotal(2_100_000_000);
+test("the tier stays granted above the threshold, including past the old 32-bit limit", async () => {
+  await setTotal(3_000_000_000, true);
   assert.equal(await withClient(getVolumeTierBonusBps), 15);
 });

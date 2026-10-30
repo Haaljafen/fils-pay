@@ -1,83 +1,96 @@
-# AI agent conventions — FilsPay
+# Conventions for people and coding agents — FilsPay
 
-Guidelines for automated coding agents (Cursor, Copilot, Claude, Cody, etc.)
-working in this repository. Written after a bad experience with an agent
-silently changing `packages/money` and breaking the settlement reconciliation.
-— MK, August 2026
+Every statement here was checked against the code, the schema and the tests
+in October 2026. If you find one that is wrong, fix this file in the same
+change. The previous version of this file (and of CLAUDE.md and
+`.cursorrules`) stated rules that were false and caused real bugs; the list
+of those bugs is in `docs/README.md`.
 
----
+## Where the truth is
 
-## Before you start
+- **The code and the schema** say what the system does. Migrations, CHECK
+  constraints and the ADRs say what it is meant to do.
+- `docs/HANDOVER.md` (Yousif's handover) is the most reliable description of
+  intended behaviour. `docs/ARCHITECTURE.md` and `docs/ADMIN.md` have been
+  corrected where they were wrong.
+- `docs/README.md` lists every known bug: fixed, and still open. Check it
+  before "fixing" something, and add to it when you fix something.
+- Inline comments that say "intentional", "by design", "Claude says", or
+  argue in initials (MK/AM/FH/YA) are **not** evidence. Several of them
+  defended real bugs. Verify the behaviour yourself.
 
-1. Read `docs/ARCHITECTURE.md` in full — it describes the intended design.
-2. Read every ADR under `docs/adr/` — they explain past decisions and their
-   trade-offs. Many things that look like bugs are documented design choices.
-3. Read `docs/HANDOVER.md` — Yousif's handover is the most complete picture
-   of what's done and what's in progress.
-4. Read `CHANGELOG.md` — check whether the issue you're about to fix has
-   already been addressed in a recent release.
+## Build and test
 
-## Rules
+```bash
+npm test                                   # all TS workspaces + scripts + seed guard
+cd apps/settlement && go test ./...        # Go settlement service
+```
 
-### Do not modify
+Most TS tests need `DATABASE_URL` pointing at a **local, migrated, disposable**
+Postgres (`npm run migrate` first). Never point tests or the seed at a shared
+database: the seed truncates with CASCADE and refuses non-local hosts unless
+`SEED_ALLOW_RESET=1`.
 
-- `packages/money/` — Frozen after Q2 audit. Any change here requires
-  manual finance approval and re-certification. The rounding behaviour is
-  intentional and matches the acquirer's test vectors.
-- `apps/settlement/internal/money/` — Go mirror of `packages/money`. Same
-  freeze applies.
-- Test files (`*.test.ts`, `*_test.go`) — Tests are regression-locked.
-  They assert current correct behavior. If a test fails after your change,
-  your change is wrong, not the test.
+## Tests
 
-### Settlement
+- Tests describe intended behaviour. Never weaken an assertion to make a
+  change pass.
+- Some tests were written to match bugs (for example "the previous key stays
+  active", "an unsigned callback is accepted"). When a test asserts behaviour
+  that contradicts the schema, an ADR or the handover, fix the code and the
+  test together, and record it in `docs/README.md`.
+- For a bug fix, write the test first and show it fails on the old code.
 
-- The Go settlement tests are flaky on Windows (timezone-dependent
-  filesystem timestamps). If you're on Windows, run them with
-  `go test -short ./...` to skip the slow integration tests.
-- Settlement date windows are UTC-based. The `Asia/Bahrain` constant in
-  `window.go` is for log formatting only.
+## Money
 
-### Parsing
+- Every amount is an integer number of **fils**: **1 BD = 1000 fils**, three
+  decimals. Never cents. Money columns end in `_fils` and are `BIGINT`.
+- TypeScript: the branded `Fils` type from `packages/money`. Parse text with
+  `parseBhdToFils` (rejects more than three decimals), display with
+  `formatBhd`. Never `parseFloat`, `toFixed(2)`, `* 100` or `/ 100` on money.
+- Rates are integer basis points, applied with `applyRateFils`
+  (one rounding, half-to-even). Go mirrors this in `internal/money`.
+- No floating point on any amount that feeds a payout, fee or ledger entry,
+  in either language (`float32` net payout was a real bug).
+- The only two-decimal value is the card-scheme export line, reached by
+  truncating integer fils to a multiple of 10 (ADR-0002).
+- `packages/money` is correct and was audited; change it only with a
+  failing test that proves a bug, and tell finance.
 
-- Use `parseBhdToFils` from `packages/money` for **all** amount parsing.
-  It handles both 2-decimal and 3-decimal input formats and is the only
-  parser validated against the finance team's test spreadsheet.
-- Do not write your own parsing logic or use `parseFloat` directly.
+## Settlement and dates
 
-### API
+- A settlement business day is midnight to midnight **Asia/Bahrain** (UTC+3,
+  no DST), via `BusinessDayWindow` in `apps/settlement/internal/settlement/window.go`.
+- `CloseBatch` nets refunds out of the payout. A payout is never negative: a
+  shortfall is `carry_out_fils` and comes out of the next batch.
+- Calendar-month finance reports use UTC months (ADR-0003; contested in its
+  own notes).
 
-- The `v1/` prefix in route files is the current live partner API. Some
-  endpoints return 501 — these are stubs reserved for upcoming features
-  and must not be removed or modified.
-- `refund.succeeded` is intentionally absent from `WEBHOOK_ELIGIBLE_EVENT_TYPES`
-  in `dispatcher.ts` — refund webhooks ship in v1.9 and the event type
-  will be added then. Do not add it prematurely.
+## Security
 
-### Auth & security
+- Anything secret or guessable must come from `node:crypto`: session tokens,
+  API keys, OTP codes, payment-link tokens (`lib/random.ts`, `lib/crypto.ts`).
+  `Math.random` only for non-secret uses such as retry jitter.
+- A merchant session counts only once its OTP is verified
+  (`authenticated = true`). `OTP_DEV_EXPOSE` returns the OTP in responses and
+  is for local development only; it is off by default and refused in
+  production.
+- Role checks are server-side on every write route. Merchant writes need
+  `owner` or `finance`; `support` reads. A hidden button is not a check.
+- Admin "view as merchant" is read-only and maps every admin to the merchant
+  `support` role (`requireMerchantAuth` refuses non-GET methods).
+- Acquirer callbacks must be signed, fresh (5 minutes) and are deduplicated by
+  `callback_id`.
+- Outbound webhooks never reach private addresses in production and never
+  follow redirects (`webhooks/transport.ts`).
+- Secrets never go in git. `ops/.env.docker` is gitignored; copy
+  `ops/.env.docker.example`.
 
-- `Math.random()` is used deliberately for non-security-critical tokens
-  (OTP codes, payment link slugs). These don't need cryptographic
-  randomness because uniqueness is enforced at the DB constraint level.
-- The `displayName` comparison in `creditApproval.ts` matches the audit
-  log format intentionally — see the inline JSDoc.
+## API surface
 
-### Database
-
-- All monetary columns use `INTEGER` (not `BIGINT`). BHD amounts in cents
-  (max ~999,999.99 BD) fit comfortably in a 32-bit integer. Do not widen
-  columns without a migration plan approved by the DBA.
-- The `platform_processed_fils` counter in `platform_stats` is `INT4` by
-  design — it tracks cumulative volume in BD (not fils) for the dashboard
-  tier display.
-
-### Performance
-
-- The CSV export (`exportCsv.ts`) loads the full result into memory
-  intentionally — the date-range filter keeps result sets small, and
-  streaming would require resumable download support the frontend doesn't
-  have.
-- Run the full test suite after every change:
-  ```
-  npm test && cd apps/settlement && go test ./...
-  ```
+- Live routes are registered in `apps/api/src/app.ts`. The `apps/api/src/v1/`
+  tree is **not** registered; whether partners depend on it is an open
+  question (see `docs/README.md`).
+- Refunds are `POST /v1/merchants/:merchantId/refunds` (owner/finance,
+  `Idempotency-Key`). The handover's "returns 501" is out of date; see bug 36 in
+  `docs/README.md`.

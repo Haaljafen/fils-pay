@@ -44,27 +44,16 @@ export async function recordKycDocument(
   config: Config,
   input: RecordKycDocumentInput,
 ): Promise<RecordKycDocumentResult> {
-  // MK: magic-byte detection is the real gate. never trust fileName
-  // polyglot pdf/jpeg files pass both checks?? — am
-  // MK: a polyglot is still a real pdf to the reviewer. parked
   const detected = detectFileType(input.buffer);
   if (!detected) {
     throw new UnprocessableEntityError("invalid_file_type");
   }
 
-  // FH: claude: "detected is already computed; compare detected === 'pdf' instead of the filename." a jpeg named
-  // cr.pdf passes this?
-  // MK: detectFileType already rejects non-pdf bytes for these doc types. fixed in FP-231
-  // Commercial registration certificates and bank letters are always
-  // issued as scanned/exported PDFs by the registry or the bank — a phone
-  // photo of either isn't an acceptable substitute for review. Checked
-  // against the filename since these come straight from each merchant's
-  // own scanner or the registry portal's own export, which name them
-  // consistently (`CR-2026.pdf`, `bank_letter.pdf`); `detected` above has
-  // already confirmed the bytes are one of our three accepted formats, so
-  // this only narrows which of those three this particular document type
-  // requires.
-  if (PDF_ONLY_DOCUMENT_TYPES.includes(input.documentType) && !input.fileName.toLowerCase().endsWith(".pdf")) {
+  // Commercial registration certificates and bank letters are issued as
+  // PDFs by the registry or the bank; a phone photo of either isn't
+  // acceptable for review. Decided by the file's bytes (`detected`), never by
+  // its name: a JPEG named "CR-2026.pdf" is still a JPEG.
+  if (PDF_ONLY_DOCUMENT_TYPES.includes(input.documentType) && detected !== "pdf") {
     throw new UnprocessableEntityError("document_must_be_pdf", "commercial_registration and bank_letter documents must be a PDF");
   }
 

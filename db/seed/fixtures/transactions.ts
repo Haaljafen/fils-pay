@@ -195,9 +195,9 @@ const MARKETPLACE_ORDER_TOTALS_FILS: readonly number[] = [
 export interface GeneratedCaptureEvent {
   transactionId: string;
   amountFils: Fils;
-  /** The fee actually charged at capture time, i.e. the MDR fee less the
-   *  merchant's negotiated discount off it — the value capture.ts records
-   *  in `transaction_events.metadata.feeFils`. */
+  /** The fee actually charged at capture time: the MDR on the amount less
+   *  the merchant's negotiated discount — the value capture.ts records in
+   *  `transaction_events.metadata.feeFils`. */
   feeFils: Fils;
   occurredAt: Date;
 }
@@ -258,12 +258,11 @@ export function generateMarketplaceOrdersForMerchant(params: {
         occurredAt,
       });
 
-      // Capture-time fee: the MDR, then the merchant's negotiated discount
-      // off that fee — the exact pair of postings capture.ts and
-      // discountAdjustment.ts leave behind, folded into one balanced group
-      // the same way every other seeded capture is.
-      const feeBeforeDiscount = applyRateFils(amountFils, mdrBps);
-      const feeFils = subtractFils(feeBeforeDiscount, applyRateFils(feeBeforeDiscount, discountBps));
+      // Capture-time fee exactly as capture.ts books it and settlement's
+      // ComputeSettlementFee charges it: the negotiated discount reduces the
+      // amount, then the MDR applies to what remains.
+      const discountedAmount = subtractFils(amountFils, applyRateFils(amountFils, discountBps));
+      const feeFils = applyRateFils(discountedAmount, mdrBps);
       const merchantNet = subtractFils(amountFils, feeFils);
 
       const legs: LedgerLeg[] = [

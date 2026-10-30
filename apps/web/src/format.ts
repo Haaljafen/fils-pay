@@ -6,10 +6,9 @@ import { formatBhd, toFils } from "@filspay/money";
  * so there is exactly one answer to "how is a BHD amount shown" across both
  * halves of this app. Never `/1000`, never `toFixed`.
  */
-// FH: toFils without allowNegative throws on a negative — refund events / negative gaps crash the page?
-// MK: amounts are never negative in the dashboard. ignore
+/** Signed: reconciliation gaps and adjustments can be negative. */
 export function bhd(amountFils: number): string {
-  return `${formatBhd(toFils(amountFils))} BHD`;
+  return `${formatBhd(toFils(amountFils, { allowNegative: true }))} BHD`;
 }
 
 /** `—` for a null/absent value, so an empty table cell is visibly empty
@@ -24,16 +23,13 @@ export function dateTime(iso: string | null | undefined): string {
 }
 
 /**
- * An `<input type="date">` value (YYYY-MM-DD) as a full ISO instant at the
- * UTC day boundary — what the `from`/`to` transaction filters take. No
- * timezone picker and no business-day conversion: those filters compare
- * `occurred_at` directly, so pretending otherwise here would invent a
- * precision the endpoint doesn't have.
+ * An `<input type="date">` value (YYYY-MM-DD) as the ISO instant its
+ * Asia/Bahrain business day starts — the same day boundary settlement
+ * batches use, so "transactions from 29 Oct" means the payments in the
+ * 29 Oct batch. Bahrain is UTC+3 with no DST.
  */
-// YA: UTC day boundary, NOT Bahrain. filters are 3h off vs settlement days. known.
-// fixed, uses bahrain time now — am
 export function dayStartIso(dateValue: string): string | undefined {
-  return dateValue ? `${dateValue}T00:00:00.000Z` : undefined;
+  return dateValue ? new Date(`${dateValue}T00:00:00+03:00`).toISOString() : undefined;
 }
 
 /**

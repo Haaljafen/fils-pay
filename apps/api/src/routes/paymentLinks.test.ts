@@ -201,7 +201,7 @@ test("pay charges exactly the link's own amount — the request body carries no 
   assert.equal(Number(txnRow.rows[0]!.captured_fils), 9_999);
 });
 
-// only without submittedAt. with a past submittedAt it pays — that's the terminal case (FH)
+// Without submittedAt; the backdated-submittedAt case is tested at the end of the file.
 test("expired link is rejected: read reports 'expired', pay is rejected 410", async () => {
   const { rawKey, merchantId } = await createApprovedMerchantWithApiKey("expired");
   const link = await createLink(rawKey, merchantId, {
@@ -358,3 +358,31 @@ test(
     assert.equal(finalLink.rows[0]!.transaction_id, txnId);
   },
 );
+
+async function payWithSubmittedAt(token: string, submittedAt: string) {
+  return app.inject({
+    method: "POST",
+    url: `/v1/payment-links/${token}/pay`,
+    headers: { "idempotency-key": randomUUID() },
+    payload: { card: APPROVED_CARD, submittedAt },
+  });
+}
+
+test("a long-expired link cannot be paid by sending an old submittedAt", async () => {
+  const { rawKey, merchantId } = await createApprovedMerchantWithApiKey("expired-backdated");
+  const link = await createLink(rawKey, merchantId, {});
+  await pool.query(`UPDATE payment_links SET expires_at = now() - interval '30 days' WHERE token = $1`, [link.token]);
+
+  const res = await payWithSubmittedAt(link.token, new Date(Date.now() - 31 * 86_400_000).toISOString());
+  assert.equal(res.statusCode, 410, res.body);
+  assert.equal(res.json().error, "payment_link_expired");
+});
+
+test("a pay retry submitted just before expiry still succeeds just after it", async () => {
+  const { rawKey, merchantId } = await createApprovedMerchantWithApiKey("expired-retry-grace");
+  const link = await createLink(rawKey, merchantId, {});
+  await pool.query(`UPDATE payment_links SET expires_at = now() - interval '1 minute' WHERE token = $1`, [link.token]);
+
+  const res = await payWithSubmittedAt(link.token, new Date(Date.now() - 2 * 60_000).toISOString());
+  assert.equal(res.statusCode, 200, res.body);
+});

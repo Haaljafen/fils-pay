@@ -58,10 +58,15 @@ async function insertDelivery(
   endpointId: string,
   opts: { eventType: string; createdAt: string },
 ): Promise<string> {
+  // A well-formed payload, in the producers' own shape for these event types,
+  // for the endpoint's merchant: these rows land in the shared outbox, and
+  // every other consumer (the reporting worker) will read them too.
   const outbox = await pool.query<{ id: string }>(
     `INSERT INTO outbox_events (event_type, aggregate_type, aggregate_id, payload)
-     VALUES ($1, 'transaction', $2, '{}'::jsonb) RETURNING id`,
-    [opts.eventType, randomUUID()],
+     SELECT $1, 'transaction', $2, jsonb_build_object('merchantId', merchant_id, 'amountCapturedFils', 0)
+       FROM webhook_endpoints WHERE id = $3
+     RETURNING id`,
+    [opts.eventType, randomUUID(), endpointId],
   );
   const outboxEventId = outbox.rows[0]!.id;
 

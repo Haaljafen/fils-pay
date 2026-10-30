@@ -56,3 +56,16 @@ test("a wrong header throws", () => {
 test("a row missing its amount throws", () => {
   assert.throws(() => parseAdjustmentCsv(`merchantId,amount,reason\n${MERCHANT_A},,x\n`), /missing a merchantId or an amount/);
 });
+
+test("amounts are BD with up to three decimals: 1 BD = 1000 fils", () => {
+  assert.equal(parseAdjustmentAmountFils("4.750"), 4750);
+  assert.equal(parseAdjustmentAmountFils("4.75"), 4750);
+  assert.equal(parseAdjustmentAmountFils("4.755"), 4755);
+  assert.equal(parseAdjustmentAmountFils("120.00"), 120_000);
+  assert.equal(parseAdjustmentAmountFils("-1.250"), -1250);
+});
+
+test("a fourth decimal or trailing text is rejected, never silently truncated", () => {
+  assert.throws(() => parseAdjustmentAmountFils("4.7555"), /could not parse amount/);
+  assert.throws(() => parseAdjustmentAmountFils("4.75abc"), /could not parse amount/);
+});

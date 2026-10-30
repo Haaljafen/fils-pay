@@ -169,3 +169,61 @@ test("runConsumerPass: atomicity — an apply failure partway through a multi-ev
   const cursorFinal = await getCursor();
   assert.ok(cursorFinal >= goodEvent.id, "watermark now past the previously-blocked good event");
 });
+
+test("runConsumerPass: refund.succeeded rolls up refund count and gross on the merchant's day", async () => {
+  const merchantId = await createMerchant("e2e-refund");
+  const txnId = randomUUID();
+  await enqueueEvent(pool, {
+    eventType: "transaction.captured",
+    aggregateType: "transaction",
+    aggregateId: txnId,
+    payload: { merchantId, amountCapturedFils: 10_000, feeFils: 250, newStatus: "captured", capturedTotalFils: 10_000 },
+  });
+  for (const amountFils of [4_000, 6_000]) {
+    await enqueueEvent(pool, {
+      eventType: "refund.succeeded",
+      aggregateType: "transaction",
+      aggregateId: txnId,
+      payload: { merchantId, refundId: randomUUID(), amountFils, feeReversedFils: 0, refundedTotalFils: amountFils, newStatus: "refunded" },
+    });
+  }
+
+  await runConsumerPass(pool, config);
+
+  const result = await pool.query(
+    `SELECT captured_count, captured_gross_fils, refund_count, refund_gross_fils FROM merchant_daily_volume WHERE merchant_id = $1`,
+    [merchantId],
+  );
+  assert.equal(result.rows.length, 1, "refunds land on the same Bahrain business day as the capture");
+  assert.equal(result.rows[0].refund_count, 2);
+  assert.equal(Number(result.rows[0].refund_gross_fils), 10_000);
+});
+
+test("runConsumerPass: a batch close for a day with no rollup row warns instead of stalling the pipeline", async () => {
+  const merchantId = await createMerchant("no-rollup-row");
+  const txn = await pool.query<{ id: string }>(
+    `INSERT INTO transactions (merchant_id, status, amount_fils, captured_fils, acquirer_reference, occurred_at)
+     VALUES ($1, 'captured', 5000, 5000, $2, '2026-03-05T09:00:00Z') RETURNING id`,
+    [merchantId, `acq_${randomUUID()}`],
+  );
+  await pool.query(
+    `INSERT INTO transaction_events (transaction_id, event_type, amount_fils, actor_type, occurred_at)
+     VALUES ($1, 'captured', 5000, 'system', '2026-03-05T09:00:00Z')`,
+    [txn.rows[0]!.id],
+  );
+  const batch = await pool.query<{ id: string }>(
+    `INSERT INTO settlement_batches (merchant_id, batch_date, status, gross_fils, fee_fils, net_payout_fils, closed_at)
+     VALUES ($1, '2026-03-05', 'closed', 5000, 125, 4875, now()) RETURNING id`,
+    [merchantId],
+  );
+  await enqueueEvent(pool, {
+    eventType: "settlement.batch_closed",
+    aggregateType: "settlement_batch",
+    aggregateId: batch.rows[0]!.id,
+    payload: { merchantId, batchId: batch.rows[0]!.id, batchDate: "2026-03-05", grossFils: 5000, feeFils: 125, netPayoutFils: 4875 },
+  });
+
+  await runConsumerPass(pool, config); // must not throw
+  const trend = await pool.query(`SELECT 1 FROM merchant_payout_trends WHERE settlement_batch_id = $1`, [batch.rows[0]!.id]);
+  assert.equal(trend.rowCount, 1);
+});

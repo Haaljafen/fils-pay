@@ -48,17 +48,21 @@ export async function createPendingSession(
 }
 
 /** Promotes a pending session to authenticated. */
+/** Promotes a pending session to authenticated and gives it a NEW token: the
+ *  token handed out before the OTP must never become the logged-in token
+ *  (session fixation). The caller sets the returned token as the cookie. */
 export async function promoteSession(
   client: PoolClient,
   sessionId: string,
   sessionTtlHours: number,
-): Promise<Date> {
+): Promise<{ rawToken: string; expiresAt: Date }> {
+  const rawToken = randomToken(32);
   const expiresAt = new Date(Date.now() + sessionTtlHours * 3_600_000);
   await client.query(
-    `UPDATE sessions SET authenticated = true, authenticated_at = now(), expires_at = $2 WHERE id = $1`,
-    [sessionId, expiresAt],
+    `UPDATE sessions SET authenticated = true, authenticated_at = now(), expires_at = $2, token_hash = $3 WHERE id = $1`,
+    [sessionId, expiresAt, sha256Hex(rawToken)],
   );
-  return expiresAt;
+  return { rawToken, expiresAt };
 }
 
 /** Takes a Pool or a PoolClient so logout can run outside a transaction. */
@@ -89,7 +93,8 @@ export async function lookupSession(
     `SELECT s.id AS session_id, s.merchant_user_id, mu.merchant_id, mu.role
        FROM live_sessions s
        JOIN merchant_users mu ON mu.id = s.merchant_user_id
-      WHERE s.token_hash = $1`,
+      WHERE s.token_hash = $1
+        AND s.authenticated = true`,
     [tokenHash],
   );
   const row = result.rows[0];

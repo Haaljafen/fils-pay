@@ -84,14 +84,14 @@ export type TransactionStatus =
 
 /** serializeTransaction() also returns `merchantId` — kept here so the type
  *  matches the wire shape exactly rather than a convenient subset of it. */
-// FH: no refundedFils on this DTO, so the drawer can't compute what's still refundable
-// refundedFils is there, a few lines down — am
 export interface TransactionDto {
   id: string;
   merchantId: string;
   status: TransactionStatus;
   amountFils: number;
   capturedFils: number;
+  /** Cumulative refunded amount; still refundable = capturedFils - refundedFils. */
+  refundedFils: number;
   currency: string;
   reference: string | null;
   acquirerReference: string;
@@ -215,7 +215,8 @@ export interface ReplayResponse {
 // --- settlement / reconciliation ---
 export type SettlementBatchStatus = "open" | "closed" | "paid";
 
-/** @property netPayoutFils Always exactly grossFils - feeFils. */
+/** netPayoutFils - carryOutFils is always exactly
+ *  grossFils - feeFils - refundFils + feeReversedFils - carryInFils. */
 export interface SettlementBatchDto {
   id: string;
   batchDate: string;
@@ -223,6 +224,10 @@ export interface SettlementBatchDto {
   grossFils: number;
   feeFils: number;
   netPayoutFils: number;
+  refundFils: number;
+  feeReversedFils: number;
+  carryInFils: number;
+  carryOutFils: number;
   closedAt: string | null;
   paidAt: string | null;
 }
@@ -237,6 +242,17 @@ export interface SettlementBatchListResponse {
 export interface SettlementBatchDetailDto extends SettlementBatchDto {
   includedTransactionCount: number;
   includedEventCount: number;
+  refunds: SettlementBatchRefundDto[];
+}
+
+export interface SettlementBatchRefundDto {
+  id: string;
+  transactionId: string;
+  reference: string | null;
+  amountFils: number;
+  feeReversedFils: number;
+  reason: string | null;
+  occurredAt: string;
 }
 
 export interface SettlementBatchTransactionDto {
@@ -261,6 +277,7 @@ export interface ReconciliationReport {
   periodTo: string;
   ledgerMerchantPayableNetFils: number;
   settlementNetPayoutFils: number;
+  carriedForwardFils: number;
   pendingUnbatchedFils: number;
   gapFils: number;
   explained: boolean;
@@ -272,6 +289,8 @@ export interface VolumePointDto {
   capturedCount: number;
   capturedGrossFils: number;
   voidedCount: number;
+  refundCount: number;
+  refundGrossFils: number;
 }
 
 /** `readModelAsOf` is nullable on the two lagged widgets: it reads

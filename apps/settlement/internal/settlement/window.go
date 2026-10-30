@@ -34,16 +34,25 @@ func mustLoadLocation(name string) *time.Location {
 	return loc
 }
 
+// BusinessDateOf returns the Asia/Bahrain calendar date an instant falls
+// on, as midnight in that zone. Use it before BusinessDayWindow whenever the
+// input is an instant rather than a date: BusinessDayWindow reads the date in
+// its argument's own location, and a UTC instant during the first three
+// Bahrain hours of a day still carries the previous UTC date.
+func BusinessDateOf(instant time.Time) time.Time {
+	y, m, d := instant.In(businessDayLocation).Date()
+	return time.Date(y, m, d, 0, 0, 0, 0, businessDayLocation)
+}
+
 // BusinessDayWindow returns the [start, end) UTC instants bounding the
 // given calendar date's Asia/Bahrain business day, i.e. Asia/Bahrain
 // 00:00:00 on `date` through Asia/Bahrain 00:00:00 on `date`+1.
-// am (oct 2): pretty sure this is an hour off in summer, bahrain does DST? we saw a gap in sept
-// nvm. no DST since 1972, see above
+//
+// `date` is read as a calendar date in its own location. For an instant,
+// convert it first with BusinessDateOf.
 func BusinessDayWindow(date time.Time) (start, end time.Time) {
-	// FH: date.Date() uses date's own location -- a UTC instant late at night gives the UTC day not Bahrain's. claude says this is a bug in BusinessDayWindow
 	y, m, d := date.Date()
 	start = time.Date(y, m, d, 0, 0, 0, 0, businessDayLocation)
-	// MK: AddDate not Add(24h). leave
 	end = start.AddDate(0, 0, 1)
 	return start, end
 }

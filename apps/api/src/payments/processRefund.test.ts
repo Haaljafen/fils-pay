@@ -478,3 +478,100 @@ test("unknown transaction ids answer 404", async () => {
   assert.equal(result.statusCode, 404);
   assert.deepEqual(result.body, { error: "transaction_not_found" });
 });
+
+// ---------------------------------------------------------------- correctness
+
+function slowApprovingAcquirer(delayMs: number): AcquirerSimulator {
+  return {
+    ...approvingAcquirer,
+    async refund(req): Promise<AcquirerRefundResult> {
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+      return { outcome: "approved", acquirerReference: req.acquirerReference, latencyMs: delayMs };
+    },
+  };
+}
+
+async function refundRow(transactionId: string) {
+  const r = await pool.query<{ refunded_fils: string; status: string }>(
+    `SELECT refunded_fils, status FROM transactions WHERE id = $1`,
+    [transactionId],
+  );
+  return { refundedFils: Number(r.rows[0]!.refunded_fils), status: r.rows[0]!.status };
+}
+
+test("only what was captured can be refunded, not the whole authorization", async () => {
+  const { merchantId, rawKey } = await createApprovedMerchantWithApiKey("refund-ceiling");
+  const txn = await capturedTransaction(rawKey, 10_000, 4_000);
+
+  const result = await processRefund(pool, approvingAcquirer, {
+    transactionId: txn.id,
+    merchantId,
+    amountFils: toFils(5_000),
+    idempotencyKey: randomUUID(),
+    actor: await apiKeyActor(merchantId),
+  });
+  assert.equal(result.statusCode, 422, JSON.stringify(result.body));
+  assert.equal((await refundRow(txn.id)).refundedFils, 0);
+});
+
+test("a merchant cannot refund another merchant's transaction", async () => {
+  const owner = await createApprovedMerchantWithApiKey("refund-owner");
+  const other = await createApprovedMerchantWithApiKey("refund-other");
+  const txn = await capturedTransaction(owner.rawKey, 5_000);
+
+  const result = await processRefund(pool, approvingAcquirer, {
+    transactionId: txn.id,
+    merchantId: other.merchantId,
+    idempotencyKey: randomUUID(),
+    actor: await apiKeyActor(other.merchantId),
+  });
+  assert.equal(result.statusCode, 404, JSON.stringify(result.body));
+  assert.equal((await refundRow(txn.id)).refundedFils, 0);
+});
+
+test("two concurrent refunds cannot together exceed what was captured", async () => {
+  const { merchantId, rawKey } = await createApprovedMerchantWithApiKey("refund-race");
+  const txn = await capturedTransaction(rawKey, 10_000);
+  const actor = await apiKeyActor(merchantId);
+  const slow = slowApprovingAcquirer(300);
+
+  const results = await Promise.all(
+    [0, 1].map(() =>
+      processRefund(pool, slow, {
+        transactionId: txn.id,
+        merchantId,
+        amountFils: toFils(6_000),
+        idempotencyKey: randomUUID(),
+        actor,
+      }),
+    ),
+  );
+  const succeeded = results.filter((r) => r.statusCode === 200).length;
+  assert.equal(succeeded, 1, `statuses ${results.map((r) => r.statusCode).join(",")}`);
+  assert.equal((await refundRow(txn.id)).refundedFils, 6_000);
+  const refunds = await pool.query(`SELECT 1 FROM refunds WHERE transaction_id = $1`, [txn.id]);
+  assert.equal(refunds.rowCount, 1);
+});
+
+test("partial refunds together reverse exactly the fee charged, never a fil more or less", async () => {
+  const { merchantId, rawKey } = await createApprovedMerchantWithApiKey("refund-fee-sum", 250);
+  const txn = await capturedTransaction(rawKey, 10_000); // fee 250 fils
+  const actor = await apiKeyActor(merchantId);
+
+  for (const amount of [3_333, 3_333, 3_334]) {
+    const r = await processRefund(pool, approvingAcquirer, {
+      transactionId: txn.id,
+      merchantId,
+      amountFils: toFils(amount),
+      idempotencyKey: randomUUID(),
+      actor,
+    });
+    assert.equal(r.statusCode, 200, JSON.stringify(r.body));
+  }
+  const reversed = await pool.query<{ total: string }>(
+    `SELECT SUM(fee_reversed_fils)::text AS total FROM refunds WHERE transaction_id = $1`,
+    [txn.id],
+  );
+  assert.equal(Number(reversed.rows[0]!.total), 250);
+  assert.equal((await refundRow(txn.id)).status, "refunded");
+});

@@ -32,8 +32,10 @@ Approving moves the merchant to `approved` and marks KYC as passed.
 go; handy after an onboarding push. Only merchants currently `under_review`
 are affected.
 
-**Rotate API key** — issues a new key and shows it once. Send it to the
-merchant through the usual secure channel.
+**Rotate API key** — revokes the old key and issues a new one, shown once.
+The old key stops working immediately, so the merchant's integration fails
+until they deploy the new key: agree a time with them first, unless the key
+has leaked. Send the new key through the usual secure channel.
 
 **View as merchant** — opens the merchant's dashboard as they see it, for
 15 minutes. Use **Exit impersonation** when you're done.
@@ -74,11 +76,14 @@ Don't submit the same file twice; there's no duplicate detection yet.
 merchant). Days that are already closed or paid are skipped, so re-running
 is always safe.
 
-**Rebuild cached balances** — refreshes every merchant's cached balance.
-Run it whenever a balance looks off or after any manual correction.
-It only rewrites the balance cache, never the ledger, so it's safe to run
-as often as you like; it asks for confirmation because it covers every
-merchant at once. The nightly recompute does the same thing at 02:00.
+**Rebuild cached balances** — resets every merchant's cached balance to
+what the ledger says they are owed (the same rebuild as the
+`settlement rebuild-balances` CLI). Run it whenever a balance looks off. It
+only rewrites the balance cache, never the ledger, so it's safe to run; it
+asks for confirmation because it covers every merchant at once. It also
+erases any **Adjust balance** correction (those live only in the cache,
+ADR-0006), so re-apply corrections afterwards. There is no nightly
+recompute; balances change only through settlement, this button and the CLI.
 
 **Rebuild analytics** — dashboards lag a little behind live activity by
 design. If they look stale, rebuild them from scratch here instead of

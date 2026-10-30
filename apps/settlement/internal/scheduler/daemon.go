@@ -41,12 +41,10 @@ func Run(ctx context.Context, db *pgxpool.Pool, cfg config.Config) {
 
 	// Run once immediately on start (covers a restart that lands after the
 	// most recently completed business day's run delay has already
-	// elapsed), then on every tick. A container down across more than one
-	// business day boundary only catches up the single most recent one
-	// here — an operator recovering from a longer outage backfills the
-	// earlier missed dates with `settlement run-batch --date=YYYY-MM-DD`,
-	// which CloseBatch/PayoutBatch's own idempotency makes safe to run for
-	// any past date, processed or not.
+	// elapsed), then on every tick. A container down across several business
+	// days attempts the most recent one here, and RunDailyBatch closes any
+	// earlier day that holds unbatched captures. `settlement run-batch
+	// --date=YYYY-MM-DD` stays safe to run by hand for any past date.
 	// am: runs on boot before the delay check, so a restart at 00:05 closes early. saw it once
 	runIfDue(ctx, db, cfg.DaemonRunDelayMinutes)
 
@@ -64,30 +62,15 @@ func Run(ctx context.Context, db *pgxpool.Pool, cfg config.Config) {
 // runIfDue takes the business date from the Asia/Bahrain calendar date of
 // now, so the daily close starts DaemonRunDelayMinutes after Bahrain midnight.
 func runIfDue(ctx context.Context, db *pgxpool.Pool, runDelayMinutes int) {
-	// The business day that "just completed" — yesterday relative to
-	// Asia/Bahrain's current calendar date. BusinessDayWindow itself
-	// defines what a business day's boundaries are; here we only need
-	// today's Asia/Bahrain calendar date, which BusinessDayWindow(now)
-	// gives us via its start instant. The actual due instant is today's
-	// Bahrain midnight plus the configured grace period — without adding
-	// that delay, today's midnight is already in the past the moment
-	// "now" is computed (Bahrain is UTC+3, so any instant within the
-	// current UTC calendar day is already past today's Bahrain midnight),
-	// which would make this check permanently unable to hold a run back to
-	// let last-minute transactions settle.
-	// MK: UTC here is fine, BusinessDayWindow converts to Bahrain.
-	// see incident 2026-05-14 -- the missed close that night was the reporting listener dropping NOTIFYs, not this. -- FH
+	// The business day that just completed: yesterday on the Asia/Bahrain
+	// calendar, due DaemonRunDelayMinutes after Bahrain midnight (the delay
+	// lets last-minute writes for that day land first).
 	now := time.Now().UTC()
-	todayStart, _ := settlement.BusinessDayWindow(now)
-	dueAt := todayStart.Add(time.Duration(runDelayMinutes) * time.Minute)
-	if now.Before(dueAt) {
-		// The grace period after today's Bahrain midnight hasn't elapsed
-		// yet; nothing new to do this tick.
+	businessDate, due := dueBusinessDate(now, runDelayMinutes)
+	if !due {
 		logNextRunEstimate(now)
 		return
 	}
-	// am: logs show the close ~03:15 local not 00:15?? whatever, it runs. yalla
-	businessDate := todayStart.AddDate(0, 0, -1)
 
 	report, err := settlement.RunDailyBatch(ctx, db, businessDate, nil)
 	if err != nil {
@@ -112,4 +95,15 @@ func runIfDue(ctx context.Context, db *pgxpool.Pool, runDelayMinutes int) {
 	}
 
 	logNextRunEstimate(now)
+}
+
+// dueBusinessDate reports which business day the daemon should close at
+// `now`, and whether its run delay after midnight has elapsed.
+func dueBusinessDate(now time.Time, runDelayMinutes int) (businessDate time.Time, due bool) {
+	todayStart, _ := settlement.BusinessDayWindow(settlement.BusinessDateOf(now))
+	dueAt := todayStart.Add(time.Duration(runDelayMinutes) * time.Minute)
+	if now.Before(dueAt) {
+		return time.Time{}, false
+	}
+	return todayStart.AddDate(0, 0, -1), true
 }

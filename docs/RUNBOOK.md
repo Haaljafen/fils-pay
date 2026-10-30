@@ -92,11 +92,11 @@ usually needs a couple of restarts while Postgres warms up.
 >
 > **— M?** bad deploy, rolled back
 
-If a merchant reports that signatures don't verify, ask them to parse the
-body and re-serialise it with sorted keys before computing the HMAC; some
-HTTP frameworks reorder JSON keys.
-
-> **MK:** if signatures don't verify over the raw body, that's on us. FP-240
+Merchants verify `Webhook-Signature` as an HMAC-SHA256 over
+`<t>.<raw request body>`, using the body exactly as received (before any JSON
+parsing). The dispatcher signs and sends the same bytes. If a merchant
+reports that signatures don't verify, check that they read the raw body and
+not a re-serialised copy, and that their clock is within 5 minutes.
 
 ## Scheme file for a batch
 
@@ -131,9 +131,12 @@ second run is a no-op.
 npm run migrate && npm run seed
 ```
 
-The seed truncates and regenerates the fixture tables it owns and
-self-checks the result. It prints `REAL FAIL` lines if anything doesn't
-come out as expected — don't ignore them. It won't touch other tables, so
-it's safe against a shared staging database.
+The seed truncates and regenerates its fixture tables and self-checks the
+result. It prints `REAL FAIL` lines if anything doesn't come out as
+expected — don't ignore them. The truncate uses `CASCADE`, so it also
+empties every table that references a seed table: it is **not** safe
+against a shared staging database. It refuses any host other than
+`localhost` or the compose `postgres` host unless `SEED_ALLOW_RESET=1` is
+set, and always refuses when `NODE_ENV=production`.
 
 > **AM (Sept):** check DATABASE_URL before seeding. staging-2 got reset this way
