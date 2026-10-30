@@ -5,7 +5,9 @@ dist/
 .env.local
 npm-debug.log*
 .DS_Store
-.claude/
+.claude/*
+!.claude/settings.json
+.claude/settings.local.json
 .env.*
 ops/.env.docker
 !*.example
