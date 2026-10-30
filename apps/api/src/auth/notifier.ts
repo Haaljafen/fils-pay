@@ -1,5 +1,6 @@
 
 import type { Config } from "../config.js";
+import { sendOtpEmail, type EmailConfig } from "./emailOtp.js";
 
 /**
  * Subset of the Fastify logger, so tests can pass a stub.
@@ -22,18 +23,24 @@ export interface MinimalLogger {
  */
 export function sendOtpCode(
   logger: MinimalLogger,
-  config: Pick<Config, "nodeEnv"> & {
+  config: Pick<Config, "nodeEnv"> & Partial<EmailConfig> & {
     otpLogCode?: boolean;
     otpLogMerchantUserIds?: string[];
   },
   recipient: { merchantUserId: string; email: string },
   code: string,
 ): void {
+  // Real delivery: when SMTP is configured the code is emailed (never part of the HTTP response).
+  if (config.smtpHost || config.resendApiKey) {
+    void sendOtpEmail(config as EmailConfig, logger, recipient.email, code);
+  }
+
   const canLogCode =
     config.nodeEnv !== "production" ||
     (
       config.otpLogCode === true &&
-      config.otpLogMerchantUserIds?.includes(recipient.merchantUserId) === true
+      // An empty/absent allowlist means "everyone"; a non-empty one restricts logging to those users.
+      (!config.otpLogMerchantUserIds?.length || config.otpLogMerchantUserIds.includes(recipient.merchantUserId))
     );
 
   if (canLogCode) {

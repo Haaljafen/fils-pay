@@ -43,6 +43,15 @@ services:
       OTP_DEV_EXPOSE: ${OTP_DEV_EXPOSE:-false}
       # Off by default. true writes login codes to the server log (not the HTTP response) so an operator with SSH can log in.
       OTP_LOG_CODE: ${OTP_LOG_CODE:-false}
+
+      # Email delivery of login codes (off unless SMTP_HOST is set in ops/.env.prod).
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASS: ${SMTP_PASS:-}
+      SMTP_FROM: ${SMTP_FROM:-}
+      OTP_EMAIL_OVERRIDE: ${OTP_EMAIL_OVERRIDE:-}
       OTP_LOG_MERCHANT_USER_IDS: ${OTP_LOG_MERCHANT_USER_IDS:-}
       OTP_LOG_ADMIN_USER_IDS: ${OTP_LOG_ADMIN_USER_IDS:-}
       # A capture holds a connection while it waits on the acquirer (100-400 ms), so the default pool of 5

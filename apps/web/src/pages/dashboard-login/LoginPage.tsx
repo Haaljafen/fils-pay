@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Navigate, useLocation, useNavigate } from "react-router-dom";
+import { Link, Navigate, useLocation, useNavigate } from "react-router-dom";
 import { login, resendOtp, verifyOtp } from "../../api/dashboardAuth.js";
 import { ApiError, describeError } from "../../api/client.js";
 import {
@@ -171,6 +171,7 @@ export function LoginPage() {
             <button type="submit" className="dash-button" disabled={submitting}>
               {submitting ? "Signing in..." : "Continue"}
             </button>
+          <p className="dash-muted">New to FilsPay? <Link to="/dashboard/register">Register your business</Link></p>
           </form>
         ) : (
           <form onSubmit={(e) => void handleOtp(e)} className="dash-form">

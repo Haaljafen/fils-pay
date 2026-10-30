@@ -1,5 +1,5 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
-import { verifyPassword } from "../adminAuth/passwords.js";
+import { hashPassword, verifyPassword } from "../adminAuth/passwords.js";
 import { issueAdminChallenge, verifyOtpCode } from "../adminAuth/otp.js";
 import { sendAdminOtpCode } from "../adminAuth/notifier.js";
 import { requireAdminSession } from "../adminAuth/middleware.js";
@@ -11,7 +11,13 @@ import {
   type AdminRole,
 } from "../adminAuth/sessions.js";
 import { withTransaction } from "../db/withTransaction.js";
-import { BadRequestError, GoneError, TooManyRequestsError, UnauthorizedError } from "../lib/errors.js";
+import { BadRequestError, ConflictError, GoneError, TooManyRequestsError, UnauthorizedError } from "../lib/errors.js";
+
+interface RegisterBody {
+  email?: string;
+  password?: string;
+  displayName?: string;
+}
 
 /**
  * A pre-computed argon2id hash of a fixed, never-used dummy password, at the
@@ -51,6 +57,37 @@ interface AdminUserRow {
  * an ordinary merchant dashboard user.
  */
 export async function adminAuthRoutes(app: FastifyInstance): Promise<void> {
+  /**
+   * Admin self-registration. Anyone can ask for an account, but the account is created PENDING
+   * (`status = 'disabled'`): login only accepts active admins, so it cannot be used until an existing admin
+   * activates it. It is also created as `support`, the least-privileged role. This replaces a shared
+   * registration code, which would have been one more secret to leak or hand out.
+   */
+  app.post<{ Body: RegisterBody }>("/register", async (request, reply) => {
+    const { email, password, displayName } = request.body ?? {};
+    if (typeof email !== "string" || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
+      throw new BadRequestError("invalid_request", "a valid email is required");
+    }
+    if (typeof displayName !== "string" || displayName.trim().length < 2 || displayName.length > 100) {
+      throw new BadRequestError("invalid_request", "displayName must be 2-100 characters");
+    }
+    if (typeof password !== "string" || password.length < 12 || password.length > 256) {
+      throw new BadRequestError("weak_password", "password must be between 12 and 256 characters");
+    }
+
+    const passwordHash = await hashPassword(password, app.config);
+    try {
+      await app.db.query(
+        `INSERT INTO admin_users (email, password_hash, display_name, role, status) VALUES ($1, $2, $3, 'support', 'disabled')`,
+        [email.trim().toLowerCase(), passwordHash, displayName.trim()],
+      );
+    } catch (err) {
+      if ((err as { code?: string }).code === "23505") throw new ConflictError("email_in_use");
+      throw err;
+    }
+    reply.code(201).send({ registered: true, role: "support", status: "pending_approval" });
+  });
+
   app.post<{ Body: LoginBody }>("/login", async (request, reply) => {
     const { email, password } = request.body ?? {};
     if (!email || !password) {
@@ -58,7 +95,7 @@ export async function adminAuthRoutes(app: FastifyInstance): Promise<void> {
     }
 
     const userResult = await app.db.query<AdminUserRow>(
-      `SELECT id, email, role, password_hash FROM admin_users WHERE email = $1 AND status = 'active'`,
+      `SELECT id, email, role, password_hash FROM admin_users WHERE lower(email) = lower($1) AND status = 'active'`,
       [email],
     );
     const user = userResult.rows[0];

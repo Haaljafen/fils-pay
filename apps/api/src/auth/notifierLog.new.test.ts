@@ -10,12 +10,12 @@ function capture() {
 const user = { merchantUserId: "u1", email: "a@b.test" };
 const admin = { adminUserId: "a1", email: "a@b.test" };
 
-test("production never logs the code unless the switch AND the user's id allowlist both say so", () => {
+test("production never logs the code unless the switch is on, and a non-empty allowlist must include the user", () => {
   const c = capture();
   sendOtpCode(c.logger, { nodeEnv: "production" }, user, "111111");
-  sendOtpCode(c.logger, { nodeEnv: "production", otpLogCode: true }, user, "111111");
+  sendOtpCode(c.logger, { nodeEnv: "production", otpLogCode: false, otpLogMerchantUserIds: ["u1"] }, user, "111111");
   sendOtpCode(c.logger, { nodeEnv: "production", otpLogCode: true, otpLogMerchantUserIds: ["other"] }, user, "111111");
-  sendAdminOtpCode(c.logger, { nodeEnv: "production", otpLogCode: true, otpLogAdminUserIds: [] }, admin, "222222");
+  sendAdminOtpCode(c.logger, { nodeEnv: "production", otpLogCode: true, otpLogAdminUserIds: ["someone-else"] }, admin, "222222");
   assert.equal(c.lines.length, 4);
   for (const l of c.lines) assert.equal("code" in l.obj, false, l.msg);
 });

@@ -29,6 +29,17 @@ export interface Config {
   otpDevExpose: boolean;
   /** Write the OTP code to the server's own log (never to the HTTP response). Off by default; see auth/notifier.ts. */
   otpLogCode: boolean;
+
+  /** Email delivery of OTP codes. Off unless SMTP_HOST is set. */
+  smtpHost: string;
+  smtpPort: number;
+  smtpUser: string;
+  smtpPass: string;
+  smtpFrom: string;
+  /** Resend HTTPS email API key. When set, OTP emails go through Resend instead of SMTP. */
+  resendApiKey: string;
+  /** Send every OTP email to this one address (demo only; the seeded accounts have placeholder emails). */
+  otpEmailOverride: string;
   /** With otpLogCode, only these user ids get their code logged (comma-separated env lists). */
   otpLogMerchantUserIds: string[];
   otpLogAdminUserIds: string[];
@@ -241,6 +252,14 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     otpMaxAttempts: parseIntEnv(env.OTP_MAX_ATTEMPTS, 5),
     otpDevExpose,
     otpLogCode: parseBoolEnv(env.OTP_LOG_CODE, false),
+
+    smtpHost: env.SMTP_HOST ?? "",
+    smtpPort: parseIntEnv(env.SMTP_PORT, 587),
+    smtpUser: env.SMTP_USER ?? "",
+    smtpPass: env.SMTP_PASS ?? "",
+    smtpFrom: env.SMTP_FROM ?? "",
+    resendApiKey: env.RESEND_API_KEY ?? "",
+    otpEmailOverride: env.OTP_EMAIL_OVERRIDE ?? "",
     otpLogMerchantUserIds: (env.OTP_LOG_MERCHANT_USER_IDS ?? "").split(",").map((s) => s.trim()).filter(Boolean),
     otpLogAdminUserIds: (env.OTP_LOG_ADMIN_USER_IDS ?? "").split(",").map((s) => s.trim()).filter(Boolean),
 

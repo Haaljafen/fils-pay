@@ -1,31 +1,26 @@
 
 import type { Config } from "../config.js";
+import { sendOtpEmail, type EmailConfig } from "../auth/emailOtp.js";
 import type { MinimalLogger } from "../auth/notifier.js";
 
-/**
- * Admin OTP delivery stub.
- *
- * Development and test environments log the OTP code.
- * Production logs the OTP code only when:
- * - OTP_LOG_CODE=true
- * - The admin ID is in OTP_LOG_ADMIN_USER_IDS
- *
- * All other production OTP events are logged without the code.
- */
 export function sendAdminOtpCode(
   logger: MinimalLogger,
-  config: Pick<Config, "nodeEnv"> & {
+  config: Pick<Config, "nodeEnv"> & Partial<EmailConfig> & {
     otpLogCode?: boolean;
     otpLogAdminUserIds?: string[];
   },
   recipient: { adminUserId: string; email: string },
   code: string,
 ): void {
+  if (config.smtpHost || config.resendApiKey) {
+    void sendOtpEmail(config as EmailConfig, logger, recipient.email, code);
+  }
+
   const canLogCode =
     config.nodeEnv !== "production" ||
     (
       config.otpLogCode === true &&
-      config.otpLogAdminUserIds?.includes(recipient.adminUserId) === true
+      (!config.otpLogAdminUserIds?.length || config.otpLogAdminUserIds.includes(recipient.adminUserId))
     );
 
   if (canLogCode) {

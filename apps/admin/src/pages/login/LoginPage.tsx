@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Navigate, useLocation, useNavigate } from "react-router-dom";
+import { Link, Navigate, useLocation, useNavigate } from "react-router-dom";
 import { login, verifyOtp } from "../../api/auth.js";
 import { describeError } from "../../api/client.js";
 import { useAdminAuth } from "../../auth/AdminAuthContext.js";
@@ -104,6 +104,7 @@ export function LoginPage() {
             <button type="submit" disabled={submitting}>
               {submitting ? "Signing in..." : "Continue"}
             </button>
+          <p className="admin-muted">New admin? <Link to="/register">Register</Link></p>
           </form>
         ) : (
           <form onSubmit={(e) => void handleOtp(e)} className="admin-form">
