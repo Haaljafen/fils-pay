@@ -43,6 +43,9 @@ export function buildApp(config: Config, pool: Pool, options: BuildAppOptions = 
   // (the nginx in ops/). Otherwise request.ip is the proxy's address, and a client
   // could spoof the header if it were trusted while exposed directly.
   const app = Fastify({ logger: true, trustProxy: process.env.TRUST_PROXY === "true" });
+  if (config.nodeEnv === "production" && config.otpLogCode) {
+    app.log.warn("OTP_LOG_CODE is on: login codes are written to this log; anyone who can read it holds the second factor");
+  }
 
   app.decorate("db", pool);
   app.decorate("config", config);

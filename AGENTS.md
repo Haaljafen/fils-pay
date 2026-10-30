@@ -74,7 +74,8 @@ database: the seed truncates with CASCADE and refuses non-local hosts unless
 - A merchant session counts only once its OTP is verified
   (`authenticated = true`). `OTP_DEV_EXPOSE` returns the OTP in responses and
   is for local development only; it is off by default and refused in
-  production.
+  production. There is no email/SMS sender: `OTP_LOG_CODE` writes the code to
+  the API's log in production, never to a response, and is off by default.
 - Role checks are server-side on every write route. Merchant writes need
   `owner` or `finance`; `support` reads. A hidden button is not a check.
 - Admin "view as merchant" is read-only and maps every admin to the merchant

@@ -57,6 +57,19 @@ const PRODUCTION_SECRETS = {
   WEBHOOK_SECRET_ENCRYPTION_KEY: Buffer.alloc(32).toString("base64"),
 };
 
+test("OTP_LOG_CODE is off unless set, boots in production, and does not put the code in responses", () => {
+  const production = {
+    DATABASE_URL,
+    NODE_ENV: "production",
+    CHECKOUT_BASE_URL: "https://pay.example.com",
+    ...PRODUCTION_SECRETS,
+  };
+  assert.equal(loadConfig(production).otpLogCode, false);
+  const on = loadConfig({ ...production, OTP_LOG_CODE: "true" });
+  assert.equal(on.otpLogCode, true);
+  assert.equal(on.otpDevExpose, false);
+});
+
 test("in production a missing CHECKOUT_BASE_URL fails boot instead of sending customers to localhost", () => {
   assert.throws(() => loadConfig({ DATABASE_URL, NODE_ENV: "production", ...PRODUCTION_SECRETS }), /CHECKOUT_BASE_URL/);
 });

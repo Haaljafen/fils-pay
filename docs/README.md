@@ -53,6 +53,7 @@ wrong, why it happens, and what it breaks.
 | 52 | Every paid batch shows as a reconciliation gap on a multi-day window | ✅ Fixed |
 | 53 | The settlement summary double-counts a transaction captured twice | ✅ Fixed |
 | 54 | A capture its day's batch missed is never paid out | ✅ Fixed |
+| 55 | Production has no way to get a login code | 🟡 Workaround: `OTP_LOG_CODE`; no email/SMS sender yet |
 
 ---
 
@@ -208,9 +209,7 @@ never given the token at all.
 **Why:** The daemon calls `cfg.RequireInternalToken()` at startup and exits
 if the token is empty; the docs described behaviour that doesn't exist. The
 api reads the same variable to authenticate its calls to settlement, and
-nothing passed it in. The docs also had `PGCONN_SETTLEMENT` backwards: it
-overrides `DATABASE_URL`, it is not "ignored while `DATABASE_URL` is set"
-(the Go config tests assert the override).
+nothing passed it in.
 
 **What it breaks:** Settlement exits right after starting. Even with the
 token set on settlement only, every admin-console action that calls
@@ -220,9 +219,13 @@ because the api sends an empty token.
 **Fix:** Kept the fail-closed behaviour (no built-in token). Both api and
 settlement now read the token from the same `ops/.env.docker` file (see
 bug 7), so they can't disagree. The template documents generating one with
-`openssl rand -hex 32`. The false `dev-token` and `PGCONN_SETTLEMENT` notes
-are corrected everywhere they appeared. Before the fix, `docker compose
-config` showed no service receiving the token.
+`openssl rand -hex 32`. The false `dev-token` notes are corrected. Before the
+fix, `docker compose config` showed no service receiving the token.
+
+**Correction:** an earlier version of this entry claimed `PGCONN_SETTLEMENT`
+overrides `DATABASE_URL`, and changed the docs to say so. That was wrong: it
+trusted a test that had locked in the bug. The original docs were right
+(`DATABASE_URL` wins), and the code now does that (`docs/FINDINGS.md` S12).
 
 ---
 
@@ -577,9 +580,8 @@ development the code is still printed in the API's own log. New config tests
 failed before the fix and pass after; the 85 tests that log in already opted
 in explicitly.
 
-**Related, still open:** production has no OTP delivery at all. The notifier
-only logs "otp code generated" without the code, so with
-`NODE_ENV=production` nobody can complete a login. Tracked as its own bug.
+**Related, still open:** production has no OTP delivery at all. Tracked as
+bug 55.
 
 ---
 
@@ -1545,3 +1547,36 @@ merchant's day had no batch at all; both now pay out and end at 0.
 batch on a later one, so a window ending between the two shows a gap until it
 includes both. The first daemon run on existing data will also pay any old
 unbatched captures, including those on the seed data.
+
+---
+
+## 55. Production has no way to get a login code 🟡 Workaround
+
+**Files:** `apps/api/src/auth/notifier.ts`, `apps/api/src/adminAuth/notifier.ts`,
+`apps/api/src/config.ts`, `apps/api/src/app.ts`, `ops/docker-compose.prod.yml`,
+`ops/.env.prod.example`
+
+**What's wrong:** With `NODE_ENV=production` the notifiers log "otp code
+generated" without the code, and no email or SMS sender exists.
+
+**What it breaks:** Nobody, merchant or admin, can finish logging in.
+
+**Workaround:** `OTP_LOG_CODE=true` writes the code to the API's log in
+production. It is off by default, is logged as a warning at boot, and never
+puts the code in a response (`OTP_DEV_EXPOSE` is still refused). Read it on the
+server with:
+
+```bash
+docker compose -f ops/docker-compose.prod.yml --env-file ops/.env.prod logs --since 5m api | grep 'otp code generated'
+```
+
+New tests pin the log contents for both notifiers and the merchant and admin
+login responses in production; the ones needing the setting failed before it
+existed.
+
+**Side effects to know:** Anyone who can read the logs, including anything they
+are shipped to, holds the second factor. Codes stay in the log after they expire
+but are useless by then. Merchants can't get a code on their own: someone with
+server access has to pass it on. The line carries the user's id, not their email.
+
+**Still open:** a real email or SMS sender, after which this should be turned off.
