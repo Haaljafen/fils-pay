@@ -87,3 +87,11 @@ acquirer call (100-400 ms), capping it near 10/s with the CPU ~90% idle; raising
 throughput. Overload: nginx caps concurrent `/v1` requests (503 with `Retry-After`), containers restart
 automatically (`restart: unless-stopped`), Postgres data lives in a named volume. Known limit: a self-signed
 certificate on the IP; production mode never shows OTP codes (no email/SMS delivery exists).
+
+## F. Added after the first pass
+
+| # | What / root cause | Impact | Fix |
+|---|---|---|---|
+| S13 | **No limit on password guesses.** Only the OTP step was capped; the password step of merchant and admin login accepted unlimited tries, each costing an argon2 hash. | Online guessing against a known merchant id + email; CPU exhaustion. | nginx `limit_req` 10/min per IP (burst 10) on both login routes (429). |
+| S14 | **Signup accepted any password** (even 1 character) and any "email". | Weak owner passwords guard real money. | 10-256 characters, basic email shape, 400 `weak_password`. |
+| S15 | **Profile PATCH trusted client field names.** Keys went into `PATCHABLE_COLUMNS[key]` unchecked: an unknown key produced a 500 and inherited names (`constructor`) were interpolated into SQL text. The comment claiming "the column names come from a fixed map" was only true for known keys. | 500s; SQL text built from prototype properties. | Whitelist with `hasOwnProperty`, 400 for anything else. |

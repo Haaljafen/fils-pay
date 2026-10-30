@@ -1,5 +1,5 @@
 import type { Pool } from "pg";
-import { NotFoundError } from "../lib/errors.js";
+import { BadRequestError, NotFoundError } from "../lib/errors.js";
 import { todayStamp } from "../lib/dateUtil.js";
 
 export interface BusinessProfile {
@@ -107,6 +107,15 @@ export async function updateBusinessProfile(
 
   if (entries.length === 0) {
     return getBusinessProfile(pool, merchantId);
+  }
+
+  // The keys come straight from the request body. Only the fixed map's own keys may reach the SQL text:
+  // an unknown key made the column name "undefined" (500) and inherited names like "constructor" were
+  // interpolated into the statement.
+  for (const [key] of entries) {
+    if (!Object.prototype.hasOwnProperty.call(PATCHABLE_COLUMNS, key)) {
+      throw new BadRequestError("invalid_request", `"${key}" is not an editable business profile field`);
+    }
   }
 
   const setClauses: string[] = [];
