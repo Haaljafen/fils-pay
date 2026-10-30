@@ -6,4 +6,7 @@ dist/
 npm-debug.log*
 .DS_Store
 .claude/
+.env.*
 ops/.env.docker
+!*.example
+ops/certs/

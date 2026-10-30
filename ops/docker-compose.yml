@@ -19,8 +19,11 @@ services:
       POSTGRES_USER: filspay
       POSTGRES_PASSWORD: filspay_dev_password
       POSTGRES_DB: filspay
+    # Loopback only: published on 0.0.0.0 the database (with its dev password) is open to the internet on a hosted server.
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
+    restart: unless-stopped
+    mem_limit: 768m
     volumes:
       - filspay_pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -76,6 +79,11 @@ services:
     # api falls back to a fixed dev key. Any hosted box must set its own
     # (openssl rand -base64 32).
     command: ["npx", "tsx", "apps/api/src/index.ts"]
+    # The hosted box is 1 vCPU / 2 GB and the API is allowed 0.5 vCPU / 512 MB. Cap node's heap below the
+    # container limit so it GCs instead of being OOM-killed, and restart on a crash.
+    restart: unless-stopped
+    cpus: 0.5
+    mem_limit: 512m
     ports:
       - "3000:3000"
     env_file: .env.docker
@@ -102,14 +110,16 @@ services:
     # The daemon exits at boot unless SETTLEMENT_INTERNAL_TOKEN is set. It comes
     # from .env.docker, the same file the api reads, so both sides always
     # hold the same token.
+    restart: unless-stopped
+    mem_limit: 256m
     command: ["./settlement", "daemon"]
     env_file: .env.docker
     environment:
       DATABASE_URL: postgres://filspay:filspay_dev_password@postgres:5432/filspay?sslmode=disable
       # Batch close and scheme export get their own pool so a long close
       # can't starve the API's connections.
-      # When set, PGCONN_SETTLEMENT overrides DATABASE_URL for this service
-      # (apps/settlement/internal/config). Here it is the same database.
+      # PGCONN_SETTLEMENT is only a fallback: DATABASE_URL wins whenever it is
+      # set (apps/settlement/internal/config). Here it is the same database.
       PGCONN_SETTLEMENT: postgres://filspay:filspay_dev_password@postgres:5432/filspay?sslmode=disable
     depends_on:
       postgres:
@@ -120,6 +130,8 @@ services:
       context: ..
       dockerfile: ops/Dockerfile.node
     # No subcommand = `worker`. (MK)
+    restart: unless-stopped
+    mem_limit: 256m
     command: ["npx", "tsx", "apps/reporting/src/index.ts"]
     env_file: .env.docker
     environment:

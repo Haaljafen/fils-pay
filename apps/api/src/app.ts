@@ -39,7 +39,10 @@ export interface BuildAppOptions {
  * tests use `app.inject(...)` against this — no real socket needed.
  */
 export function buildApp(config: Config, pool: Pool, options: BuildAppOptions = {}): FastifyInstance {
-  const app = Fastify({ logger: true });
+  // TRUST_PROXY=true only when the API sits behind a proxy that sets X-Forwarded-For
+  // (the nginx in ops/). Otherwise request.ip is the proxy's address, and a client
+  // could spoof the header if it were trusted while exposed directly.
+  const app = Fastify({ logger: true, trustProxy: process.env.TRUST_PROXY === "true" });
 
   app.decorate("db", pool);
   app.decorate("config", config);

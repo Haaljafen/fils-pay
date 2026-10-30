@@ -72,10 +72,12 @@ func runIfDue(ctx context.Context, db *pgxpool.Pool, runDelayMinutes int) {
 		return
 	}
 
+	// A failed merchant no longer aborts the pass (RunDailyBatch keeps going and
+	// returns the joined errors), and the batches that DID get paid still need
+	// their settlement.paid notification, so log the failure and carry on.
 	report, err := settlement.RunDailyBatch(ctx, db, businessDate, nil)
 	if err != nil {
-		log.Printf("settlement daemon: RunDailyBatch(%s) failed: %v", businessDate.Format("2006-01-02"), err)
-		return
+		log.Printf("settlement daemon: RunDailyBatch(%s) finished with failures: %v", businessDate.Format("2006-01-02"), err)
 	}
 	log.Printf("settlement daemon: RunDailyBatch(%s) processed %d merchant(s)", businessDate.Format("2006-01-02"), len(report.MerchantResults))
 

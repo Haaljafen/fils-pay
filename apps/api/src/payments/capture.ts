@@ -71,6 +71,17 @@ interface LockedTransactionRow {
 }
 
 /**
+ * The idempotency fingerprint of a capture request. The transaction id is part
+ * of it: the key's scope is (merchant, endpoint, key), so without the id a key
+ * reused on a DIFFERENT transaction matched the first capture's hash and got
+ * that capture's stored 200 replayed, while the second transaction was never
+ * captured. processRefund's hash already includes its transaction id.
+ */
+export function captureRequestHash(input: Pick<CaptureInput, "transactionId" | "amountFils">): string {
+  return hashRequest({ transactionId: input.transactionId, amountFils: input.amountFils ?? null });
+}
+
+/**
  * `POST /v1/transactions/:id/capture` business logic. Integer math,
  * double-entry journaling, row-locked, idempotent.
  *
@@ -89,7 +100,7 @@ export async function captureTransaction(
   acquirer: AcquirerSimulator,
   input: CaptureInput,
 ): Promise<CaptureResult> {
-  const requestHash = hashRequest({ amountFils: input.amountFils ?? null });
+  const requestHash = captureRequestHash(input);
 
   return withTransaction(pool, async (client) => {
     const claim = await claimIdempotencyKey(client, {

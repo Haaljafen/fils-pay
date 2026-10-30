@@ -539,6 +539,11 @@ func RunDailyBatch(ctx context.Context, db *pgxpool.Pool, businessDate time.Time
 
 	sort.Slice(merchantIDs, func(i, j int) bool { return merchantIDs[i].String() < merchantIDs[j].String() })
 
+	// One merchant failing (a bad split configuration, a constraint violation)
+	// must not stop everyone sorted after it from being settled: every failure is
+	// collected, the rest of the merchants are still processed, and the joined
+	// error is returned at the end. Re-running is safe — every step is idempotent.
+	var failures []error
 	report := DailyBatchReport{BusinessDate: businessDate}
 	for _, merchantID := range merchantIDs {
 		// Days a batch never ran for (the merchant was suspended, or the
@@ -546,9 +551,10 @@ func RunDailyBatch(ctx context.Context, db *pgxpool.Pool, businessDate time.Time
 		// their own date instead of waiting for someone to backfill by hand.
 		missedDays, err := unclosedCaptureDays(ctx, db, merchantID, businessDate)
 		if err != nil {
-			return report, fmt.Errorf("settlement: RunDailyBatch: unclosedCaptureDays(%s): %w", merchantID, err)
+			failures = append(failures, fmt.Errorf("settlement: RunDailyBatch: unclosedCaptureDays(%s): %w", merchantID, err))
+			continue
 		}
-		eligible := true
+		eligible, caughtUp := true, true
 		for _, day := range missedDays {
 			outcome, err := closeAndPayMerchant(ctx, db, merchantID, day)
 			if errors.Is(err, ErrMerchantNotEligible) {
@@ -556,12 +562,16 @@ func RunDailyBatch(ctx context.Context, db *pgxpool.Pool, businessDate time.Time
 				break
 			}
 			if err != nil {
-				return report, err
+				failures = append(failures, err)
+				caughtUp = false
+				break
 			}
 			log.Printf("settlement: RunDailyBatch: caught up merchant %s for missed day %s: batch %s net %d",
 				merchantID, day.Format("2006-01-02"), outcome.BatchID, outcome.NetPayoutFils)
 		}
-		if !eligible {
+		// A failed older day stops this merchant (later days would claim its
+		// captures under the wrong date) but not the merchants after it.
+		if !eligible || !caughtUp {
 			continue
 		}
 
@@ -573,12 +583,13 @@ func RunDailyBatch(ctx context.Context, db *pgxpool.Pool, businessDate time.Time
 				// merchant scan already would have.
 				continue
 			}
-			return report, err
+			failures = append(failures, err)
+			continue
 		}
 		report.MerchantResults = append(report.MerchantResults, outcome)
 	}
 
-	return report, nil
+	return report, errors.Join(failures...)
 }
 
 // closeAndPayMerchant closes one merchant's batch for one business date and

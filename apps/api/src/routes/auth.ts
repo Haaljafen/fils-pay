@@ -9,7 +9,7 @@ import {
   promoteSession,
   revokeSession,
 } from "../auth/sessions.js";
-import { findOtpRecipient } from "../auth/users.js";
+
 import { withTransaction } from "../db/withTransaction.js";
 import { BadRequestError, GoneError, TooManyRequestsError, UnauthorizedError } from "../lib/errors.js";
 
@@ -75,7 +75,11 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
       throw new UnauthorizedError("invalid_credentials");
     }
 
-    const recipient = await findOtpRecipient(app.db, email) ?? user;
+    // The one-time code and the pending session belong to the user whose
+    // password was just verified for THIS merchant. An email-only lookup
+    // across all merchants could hand a session for another tenant's user to
+    // whoever signed up with the same address.
+    const recipient = user;
 
     const { code, expiresAt, rawToken } = await withTransaction(app.db, async (client) => {
       const challenge = await issueChallenge(client, {
@@ -153,18 +157,26 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
         throw new GoneError("otp_expired");
       }
 
-      // am: check-then-increment is fine, max_attempts=5 so worst case is 5 guesses
-      // MK: 5 guesses per parallel batch? if i fire 50 at once they all read attempt_count=0
-      if (challenge.attempt_count >= challenge.max_attempts) {
+      // Count the attempt BEFORE comparing the code, in one atomic UPDATE.
+      // Reading the counter first and incrementing it afterwards let N
+      // parallel guesses all see the same low count and all get checked.
+      // This UPDATE only succeeds while attempts remain, so at most
+      // max_attempts codes are ever compared per challenge, however many
+      // requests race.
+      const counted = await app.db.query<{ attempt_count: number }>(
+        `UPDATE otp_challenges
+            SET attempt_count = attempt_count + 1
+          WHERE id = $1 AND consumed_at IS NULL AND attempt_count < max_attempts
+        RETURNING attempt_count`,
+        [challenge.id],
+      );
+      if (counted.rows.length === 0) {
         await revokeSession(app.db, pending.sessionId);
         throw new TooManyRequestsError("too_many_attempts");
       }
 
       const matches = verifyOtpCode(code, challenge.code_salt, challenge.code_hash);
       if (!matches) {
-        await app.db.query(`UPDATE otp_challenges SET attempt_count = attempt_count + 1 WHERE id = $1`, [
-          challenge.id,
-        ]);
         throw new UnauthorizedError("invalid_code");
       }
 
@@ -215,13 +227,22 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
       throw new UnauthorizedError("no_pending_session");
     }
 
-    const existing = await app.db.query<{ id: string; created_at: Date }>(
-      `SELECT id, created_at FROM otp_challenges WHERE id = $1`,
-      [pending.otpChallengeId],
-    );
+    const existing = await app.db.query<{
+      id: string;
+      created_at: Date;
+      attempt_count: number;
+      max_attempts: number;
+    }>(`SELECT id, created_at, attempt_count, max_attempts FROM otp_challenges WHERE id = $1`, [
+      pending.otpChallengeId,
+    ]);
     const existingChallenge = existing.rows[0];
     if (existingChallenge && Date.now() - existingChallenge.created_at.getTime() < 30_000) {
       throw new TooManyRequestsError("resend_too_soon");
+    }
+    // A used-up guess budget cannot be refreshed by asking for a new code.
+    if (existingChallenge && existingChallenge.attempt_count >= existingChallenge.max_attempts) {
+      await revokeSession(app.db, pending.sessionId);
+      throw new TooManyRequestsError("too_many_attempts");
     }
 
     const { code, expiresAt } = await withTransaction(app.db, async (client) => {
@@ -235,6 +256,7 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
         ttlMinutes: app.config.otpTtlMinutes,
         codeLength: app.config.otpCodeLength,
         maxAttempts: app.config.otpMaxAttempts,
+        initialAttemptCount: existingChallenge?.attempt_count ?? 0,
       });
       await client.query(`UPDATE sessions SET otp_challenge_id = $1 WHERE id = $2`, [
         challenge.id,

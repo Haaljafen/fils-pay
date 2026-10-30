@@ -25,4 +25,28 @@ export async function healthRoutes(app: FastifyInstance): Promise<void> {
     }
     return { status: "ready" };
   });
+
+  // GET /healthz/db — deep check for a load balancer or an operator. Unlike
+  // /readyz it asks the database now, bounded by a short timeout so a hung
+  // connection answers 503 instead of hanging the probe. /readyz stays
+  // boot-only on purpose (a flapping readiness probe once pulled every
+  // instance out of rotation), so wire this one to alerting, or to the
+  // balancer with a "N consecutive failures" threshold.
+  app.get("/healthz/db", async (_req, reply) => {
+    let timer: NodeJS.Timeout | undefined;
+    try {
+      await Promise.race([
+        app.db.query("SELECT 1"),
+        new Promise((_, reject) => {
+          timer = setTimeout(() => reject(new Error("db_probe_timeout")), 2_000);
+        }),
+      ]);
+      return { status: "ok" };
+    } catch {
+      reply.code(503);
+      return { status: "db_unavailable" };
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
+  });
 }

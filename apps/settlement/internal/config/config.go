@@ -54,21 +54,18 @@ type Config struct {
 // SETTLEMENT_INTERNAL_TOKEN is read but not required here — see
 // RequireInternalToken, called only by the subcommand that actually needs it.
 func Load() (Config, error) {
+	// DATABASE_URL always wins. PGCONN_SETTLEMENT is only a fallback for a
+	// deployment that sets no DATABASE_URL for this worker (ops/README.md: "It
+	// only takes effect when DATABASE_URL is unset"; ARCHITECTURE: unset by
+	// default). It used to OVERRIDE DATABASE_URL, so a stale or replica
+	// connection string left in the environment silently pointed the worker
+	// that writes batches, ledger entries and payouts at the wrong database.
 	databaseURL := os.Getenv("DATABASE_URL")
 	if databaseURL == "" {
-		return Config{}, fmt.Errorf("config: DATABASE_URL environment variable is not set")
+		databaseURL = os.Getenv("PGCONN_SETTLEMENT")
 	}
-
-	// PGCONN_SETTLEMENT optionally overrides DATABASE_URL for a deployment
-	// that routes this worker's batch/export queries through a dedicated
-	// settlement Postgres role or read replica, kept separate from the
-	// pool apps/api's request path uses so a long-running batch close can't
-	// starve it. Unset in the common case — most deployments share one
-	// Postgres instance across every service, so DATABASE_URL alone is
-	// sufficient and this worker falls back to it exactly like every other
-	// service does.
-	if override := os.Getenv("PGCONN_SETTLEMENT"); override != "" {
-		databaseURL = override
+	if databaseURL == "" {
+		return Config{}, fmt.Errorf("config: DATABASE_URL environment variable is not set")
 	}
 
 	// Not validated here: only `daemon` needs it (RequireInternalToken).

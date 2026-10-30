@@ -1,0 +1,100 @@
+# Production stack for the 1 vCPU / 2 GB hosted server. Secrets come from ops/.env.prod (never committed;
+# see .env.prod.example). Run: docker compose -f ops/docker-compose.prod.yml --env-file ops/.env.prod up -d --build
+name: filspay
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    mem_limit: 512m
+    environment:
+      POSTGRES_USER: filspay
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set in ops/.env.prod}
+      POSTGRES_DB: filspay
+    volumes:
+      - filspay_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U filspay -d filspay"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+
+  migrate:
+    build: { context: .., dockerfile: ops/Dockerfile.node }
+    command: ["npx", "tsx", "db/migrate.ts"]
+    environment:
+      DATABASE_URL: postgres://filspay:${POSTGRES_PASSWORD}@postgres:5432/filspay
+    depends_on: { postgres: { condition: service_healthy } }
+    restart: "no"
+
+  api:
+    build: { context: .., dockerfile: ops/Dockerfile.node }
+    restart: unless-stopped
+    cpus: 0.5
+    mem_limit: 512m
+    # KYC uploads are written under /app/data; without a volume they vanish whenever the container is recreated.
+    volumes: ["kyc_data:/app/data"]
+    command: ["node", "--max-old-space-size=384", "--import", "tsx", "apps/api/src/index.ts"]
+    environment:
+      NODE_ENV: production
+      TRUST_PROXY: "true" # behind ops/nginx.conf, which sets X-Forwarded-For
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      # Production mode requires an https:// base for payment-link URLs. Needs real TLS in front before it works for customers.
+      CHECKOUT_BASE_URL: ${CHECKOUT_BASE_URL:?set in ops/.env.prod, https://...}
+      OTP_DEV_EXPOSE: ${OTP_DEV_EXPOSE:-false}
+      # A capture holds a connection while it waits on the acquirer (100-400 ms), so the default pool of 5
+      # capped the whole API at ~10 checkouts/s with the CPU ~90% idle.
+      PG_POOL_MAX: "30"
+      PG_POOL_CONNECTION_TIMEOUT_MS: "8000"
+      DATABASE_URL: postgres://filspay:${POSTGRES_PASSWORD}@postgres:5432/filspay
+      WEBHOOK_SECRET_ENCRYPTION_KEY: ${WEBHOOK_SECRET_ENCRYPTION_KEY:?}
+      SETTLEMENT_INTERNAL_TOKEN: ${SETTLEMENT_INTERNAL_TOKEN:?}
+      SETTLEMENT_INTERNAL_URL: http://settlement:8091
+      ACQUIRER_CALLBACK_SIGNING_SECRET: ${ACQUIRER_CALLBACK_SIGNING_SECRET:?}
+    depends_on:
+      postgres: { condition: service_healthy }
+      migrate: { condition: service_completed_successfully }
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+
+  settlement:
+    build: { context: .., dockerfile: ops/Dockerfile.go }
+    restart: unless-stopped
+    mem_limit: 128m
+    command: ["./settlement", "daemon"]
+    environment:
+      DATABASE_URL: postgres://filspay:${POSTGRES_PASSWORD}@postgres:5432/filspay
+      SETTLEMENT_INTERNAL_TOKEN: ${SETTLEMENT_INTERNAL_TOKEN:?}
+    depends_on: { migrate: { condition: service_completed_successfully } }
+
+  reporting:
+    build: { context: .., dockerfile: ops/Dockerfile.node }
+    restart: unless-stopped
+    mem_limit: 192m
+    command: ["node", "--max-old-space-size=128", "--import", "tsx", "apps/reporting/src/index.ts"]
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgres://filspay:${POSTGRES_PASSWORD}@postgres:5432/filspay
+    depends_on: { migrate: { condition: service_completed_successfully } }
+
+  web:
+    build: { context: .., dockerfile: ops/Dockerfile.web, args: { APP: web, PUBLIC_WEB_URL: "${PUBLIC_URL:-http://localhost}" } }
+    restart: unless-stopped
+    mem_limit: 32m
+    ports: ["80:80", "443:443"]
+    volumes: ["./certs:/etc/nginx/certs:ro"]
+    depends_on: [api]
+
+  admin:
+    build: { context: .., dockerfile: ops/Dockerfile.web, args: { APP: admin, PUBLIC_WEB_URL: "${PUBLIC_URL:-http://localhost}" } }
+    restart: unless-stopped
+    mem_limit: 32m
+    ports: ["8080:80", "8443:443"]
+    volumes: ["./certs:/etc/nginx/certs:ro"]
+    depends_on: [api]
+
+volumes:
+  filspay_pgdata:
+  kyc_data:

@@ -1,6 +1,7 @@
 import type { Pool } from "pg";
 import { insertAdminAuditLog } from "../adminAudit/log.js";
 import { withTransaction } from "../db/withTransaction.js";
+import { recordKycReviewInTx } from "../onboarding/review.js";
 
 export interface BulkApproveMerchantsKycInput {
   merchantIds: string[];
@@ -17,20 +18,43 @@ export interface BulkApproveMerchantsKycResult {
   approvedMerchantIds: string[];
 }
 
-/** Approves the given merchants and audits it. */
+/**
+ * Approves the given merchants and audits it.
+ *
+ * Only a merchant that is `under_review` can be approved. The UPDATE this
+ * replaces had no status filter, so a bulk selection could also approve a
+ * REJECTED merchant (and one that had never been submitted), and it wrote
+ * merchants directly, bypassing recordKycReviewInTx -- the one function allowed
+ * to write kyc_passed -- so no merchant_kyc_reviews trail existed for any of them.
+ */
 export async function bulkApproveMerchantsKyc(
   pool: Pool,
   input: BulkApproveMerchantsKycInput,
 ): Promise<BulkApproveMerchantsKycResult> {
   return withTransaction(pool, async (client) => {
-    const result = await client.query<{ id: string }>(
-      `UPDATE merchants
-          SET onboarding_status = 'approved', kyc_passed = true
-        WHERE id = ANY($1::uuid[])
-      RETURNING id`,
+    const reviewer = await client.query<{ email: string }>(`SELECT email FROM admin_users WHERE id = $1`, [
+      input.adminUserId,
+    ]);
+    const reviewerIdentifier = reviewer.rows[0]?.email ?? input.adminUserId;
+
+    const pending = await client.query<{ id: string }>(
+      `SELECT id FROM merchants
+        WHERE id = ANY($1::uuid[]) AND onboarding_status = 'under_review'
+        ORDER BY id
+        FOR UPDATE`,
       [input.merchantIds],
     );
-    const approvedMerchantIds = result.rows.map((row) => row.id);
+    const approvedMerchantIds: string[] = [];
+    for (const row of pending.rows) {
+      await recordKycReviewInTx(client, {
+        merchantId: row.id,
+        outcome: "approved",
+        reviewerIdentifier,
+        reviewerAdminUserId: input.adminUserId,
+        notes: input.notes,
+      });
+      approvedMerchantIds.push(row.id);
+    }
 
     await insertAdminAuditLog(client, {
       adminUserId: input.adminUserId,

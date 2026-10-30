@@ -11,8 +11,6 @@ interface PublicPaymentLinkRow {
   expires_at: Date;
   reserved_at: Date | null;
   merchant_display_name: string;
-  merchant_public_key: string | null;
-  integration_id: string | null;
 }
 
 /** Public shape. Contains nothing that identifies or authenticates the merchant beyond its display name. */
@@ -25,38 +23,39 @@ export interface PublicPaymentLinkDto {
   description: string | null;
   status: string;
   expiresAt: string;
-  merchantPublicKey: string | null;
-  merchantIntegrationId: string | null;
 }
 
-/** `GET /v1/payment-links/:token` — public, unauthenticated. */
+/**
+ * `GET /v1/payment-links/:token` — public, unauthenticated.
+ *
+ * Never reads api_keys. This used to return the merchant's newest live API
+ * key's key_prefix (the first 16 characters of the raw secret key) and its
+ * key_hash (the sha256 the API authenticates against) to anyone holding a
+ * checkout link. Nothing in the checkout page used either value.
+ */
 export async function getPublicPaymentLink(
   pool: Pool,
   token: string,
   reservationTimeoutSeconds: number,
 ): Promise<PublicPaymentLinkDto | null> {
-  // perf regression since 0044? the LATERAL below runs per link. — MK
-  // am: one row, it's an index lookup. ignore
   const result = await pool.query<PublicPaymentLinkRow>(
     `SELECT pl.token, pl.amount_fils, pl.currency, pl.reference, pl.description,
-            pl.status, pl.expires_at, pl.reserved_at, m.display_name AS merchant_display_name,
-            ak.key_prefix AS merchant_public_key,
-            ak.key_hash AS integration_id
+            pl.status, pl.expires_at, pl.reserved_at, m.display_name AS merchant_display_name
        FROM payment_links pl
        JOIN merchants m ON m.id = pl.merchant_id
-       LEFT JOIN LATERAL (
-         SELECT key_prefix, key_hash
-           FROM api_keys
-          WHERE merchant_id = pl.merchant_id AND revoked_at IS NULL
-          ORDER BY created_at DESC
-          LIMIT 1
-       ) ak ON true
       WHERE pl.token = $1`,
     [token],
   );
   const row = result.rows[0];
   if (!row) return null;
+  return toPublicPaymentLinkDto(row, reservationTimeoutSeconds);
+}
 
+/** Builds the public DTO field by field, so a column added to the query can never reach a customer by accident. */
+export function toPublicPaymentLinkDto(
+  row: PublicPaymentLinkRow,
+  reservationTimeoutSeconds: number,
+): PublicPaymentLinkDto {
   return {
     token: row.token,
     amountFils: Number(row.amount_fils),
@@ -70,7 +69,5 @@ export async function getPublicPaymentLink(
       reservationTimeoutSeconds,
     ),
     expiresAt: row.expires_at.toISOString(),
-    merchantPublicKey: row.merchant_public_key,
-    merchantIntegrationId: row.integration_id,
   };
 }

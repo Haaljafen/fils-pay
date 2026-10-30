@@ -37,12 +37,16 @@ func ApplyBatchClose(ctx context.Context, tx pgx.Tx, merchantID, batchID uuid.UU
 // ApplyPayout is called once, inside PayoutBatch's own transaction,
 // applying the negation of the same delta ApplyBatchClose applied at close
 // time.
-// am: if the row is missing this UPDATE no-ops and the payout never leaves the cache. happens for split children
+//
+// An UPSERT, not a bare UPDATE: with no cache row an UPDATE matches nothing, the
+// ledger payout leg is posted but the payout never leaves the cache.
 func ApplyPayout(ctx context.Context, tx pgx.Tx, merchantID, batchID uuid.UUID, netPayoutFils money.Fils) error {
 	_, err := tx.Exec(ctx, `
-		UPDATE merchant_balances
-		   SET cached_payable_fils = cached_payable_fils - $2, updated_at = now()
-		 WHERE merchant_id = $1
+		INSERT INTO merchant_balances (merchant_id, cached_payable_fils, updated_at)
+		VALUES ($1, -$2::bigint, now())
+		ON CONFLICT (merchant_id) DO UPDATE
+		  SET cached_payable_fils = merchant_balances.cached_payable_fils - $2::bigint,
+		      updated_at = now()
 	`, merchantID, int64(netPayoutFils))
 	return err
 }

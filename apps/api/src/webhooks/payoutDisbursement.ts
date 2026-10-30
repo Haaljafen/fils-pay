@@ -12,8 +12,14 @@ export async function recordPayoutDisbursementEffect(
   }
 
   await pool.query(
+    // One instruction per paid batch. This runs as a pre-delivery effect of
+    // every settlement.paid delivery (one per endpoint, retried after a
+    // crash, repeated if the event was enqueued twice), so it has to be
+    // idempotent: the unique index on settlement_batch_id (migration 0075)
+    // turns every repeat into a no-op instead of another payout instruction.
     `INSERT INTO settlement_payout_disbursements (settlement_batch_id, amount_fils, disbursement_reference)
-     VALUES ($1, $2, 'disb_' || gen_random_uuid())`,
+     VALUES ($1, $2, 'disb_' || gen_random_uuid())
+     ON CONFLICT (settlement_batch_id) DO NOTHING`,
     [settlementBatchId, amountFils],
   );
 }

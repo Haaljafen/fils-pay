@@ -27,9 +27,11 @@ func TestLoad_UsesDatabaseURLByDefault(t *testing.T) {
 	}
 }
 
-// FH: came in with 'test: config' (b64cd3c). it locks in the override, doesn't say the override is right
-// MK: it's right.
-func TestLoad_PgconnSettlementOverridesWhenSet(t *testing.T) {
+// The documented rule (ops/README.md, compose): PGCONN_SETTLEMENT only takes
+// effect when DATABASE_URL is unset. This test used to assert the opposite and so
+// froze the bug that let a stray PGCONN_SETTLEMENT redirect the money-writing
+// worker to another database.
+func TestLoad_DatabaseURLWinsOverPgconnSettlement(t *testing.T) {
 	withEnv(t, map[string]string{
 		"DATABASE_URL":      "postgres://a/db",
 		"PGCONN_SETTLEMENT": "postgres://b/settlement-replica",
@@ -38,7 +40,21 @@ func TestLoad_PgconnSettlementOverridesWhenSet(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if cfg.DatabaseURL != "postgres://b/settlement-replica" {
-		t.Fatalf("expected the PGCONN_SETTLEMENT override to win, got %q", cfg.DatabaseURL)
+	if cfg.DatabaseURL != "postgres://a/db" {
+		t.Fatalf("expected DATABASE_URL to win, got %q", cfg.DatabaseURL)
+	}
+}
+
+func TestLoad_PgconnSettlementIsTheFallbackWhenDatabaseURLIsUnset(t *testing.T) {
+	withEnv(t, map[string]string{
+		"DATABASE_URL":      "",
+		"PGCONN_SETTLEMENT": "postgres://b/settlement",
+	})
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.DatabaseURL != "postgres://b/settlement" {
+		t.Fatalf("expected the fallback, got %q", cfg.DatabaseURL)
 	}
 }

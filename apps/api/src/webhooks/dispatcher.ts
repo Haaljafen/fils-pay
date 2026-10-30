@@ -214,17 +214,34 @@ async function attemptOneDelivery(
 }
 
 /** Step B: attempt every currently-due 'pending' delivery, sequentially. */
-// MK: no SKIP LOCKED — only ever run ONE api replica until this changes
-// FH: staging ran 2 replicas since June, never saw a dup delivery, so it's fine
+// Rows are CLAIMED, not merely read: FOR UPDATE SKIP LOCKED lets a second
+// replica (or an overlapping pass) skip rows another one already picked, and the
+// claim pushes next_attempt_at out by a lease so an in-flight row is not "due"
+// again until the lease expires. attemptOneDelivery's own UPDATE then writes
+// the real outcome; a crash mid-attempt just lets the lease run out and the row
+// is retried. Without this, two replicas each sent every delivery (and ran its
+// pre-delivery effect) twice.
 async function attemptDueDeliveries(pool: Pool, transport: WebhookTransport, config: DispatcherConfig): Promise<number> {
+  const leaseMs = config.webhookRequestTimeoutMs * 2 + 30_000;
   const dueResult = await pool.query<DueDeliveryRow>(
-    `SELECT wd.id, wd.endpoint_id, wd.event_type, wd.delivery_event_id, wd.payload, wd.attempt_count, we.url, we.secret_ciphertext
-       FROM webhook_deliveries wd
-       JOIN webhook_endpoints we ON we.id = wd.endpoint_id
-      WHERE wd.status = 'pending' AND wd.next_attempt_at <= now()
-      ORDER BY wd.next_attempt_at ASC
-      LIMIT $1`,
-    [STEP_B_BATCH_LIMIT],
+    `WITH due AS (
+       SELECT id FROM webhook_deliveries
+        WHERE status = 'pending' AND next_attempt_at <= now()
+        ORDER BY next_attempt_at ASC
+        LIMIT $1
+        FOR UPDATE SKIP LOCKED
+     ), claimed AS (
+       UPDATE webhook_deliveries wd
+          SET next_attempt_at = now() + ($2::text || ' milliseconds')::interval
+         FROM due
+        WHERE wd.id = due.id
+       RETURNING wd.id, wd.endpoint_id, wd.event_type, wd.delivery_event_id, wd.payload, wd.attempt_count, wd.next_attempt_at
+     )
+     SELECT c.id, c.endpoint_id, c.event_type, c.delivery_event_id, c.payload, c.attempt_count, we.url, we.secret_ciphertext
+       FROM claimed c
+       JOIN webhook_endpoints we ON we.id = c.endpoint_id
+      ORDER BY c.next_attempt_at ASC, c.id ASC`,
+    [STEP_B_BATCH_LIMIT, leaseMs],
   );
 
   for (const row of dueResult.rows) {

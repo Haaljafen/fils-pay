@@ -1,4 +1,4 @@
-import type { Pool } from "pg";
+import type { Pool, PoolClient } from "pg";
 import { toFils } from "@filspay/money";
 import { authorizeTransaction } from "../payments/authorize.js";
 import { captureTransaction } from "../payments/capture.js";
@@ -75,8 +75,16 @@ export async function payPaymentLink(
   // captures "60–70 s apart" against a 60 s timeout). A session advisory lock
   // has no timeout to outrun, and Postgres releases it if this process dies,
   // so a crashed attempt still frees the link.
+  //
+  // Every query of the attempt then runs on this SAME connection. Borrowing a
+  // second pooled connection for each step while this one sat holding the lock
+  // needed two at once per checkout: with the pool at its default of 5, five
+  // concurrent checkouts took every connection for their locks, none could get
+  // one to authorize, and all of them failed with a 500 when the pool's
+  // connection timeout ran out.
   const lockClient = await pool.connect();
   let lockHeld = false;
+  let connectionBroken = false;
   try {
     const lock = await lockClient.query<{ locked: boolean }>(
       `SELECT pg_try_advisory_lock(hashtextextended($1, 0)) AS locked`,
@@ -86,12 +94,16 @@ export async function payPaymentLink(
     if (!lockHeld) {
       return { statusCode: 409, body: { error: "payment_link_processing" } };
     }
-    return await payWhileHoldingLinkLock(pool, acquirer, config, input);
+    const onePool = singleConnectionPool(lockClient, () => {
+      connectionBroken = true;
+    });
+    return await payWhileHoldingLinkLock(onePool, acquirer, config, input);
   } finally {
-    // If unlocking fails, destroy the connection instead of returning it to
-    // the pool: the lock dies with the connection.
-    let destroy = false;
-    if (lockHeld) {
+    // If unlocking fails, or a step left the connection in an unknown state,
+    // destroy it instead of returning it to the pool: the lock dies with the
+    // connection.
+    let destroy = connectionBroken;
+    if (lockHeld && !destroy) {
       try {
         await lockClient.query(`SELECT pg_advisory_unlock(hashtextextended($1, 0))`, [input.token]);
       } catch {
@@ -100,6 +112,34 @@ export async function payPaymentLink(
     }
     lockClient.release(destroy);
   }
+}
+
+/**
+ * A Pool stand-in that always hands out `client`, so authorizeTransaction and
+ * captureTransaction (which take a Pool and open their own withTransaction)
+ * run on the connection already holding the link's advisory lock. Their
+ * transactions are sequential, never nested, so sharing one session is safe,
+ * and a session-level advisory lock survives each COMMIT/ROLLBACK.
+ * withTransaction's release() is a no-op here (the caller owns the client);
+ * a release(err) after a failed ROLLBACK is reported through `onBroken` so
+ * the caller destroys the connection instead of pooling it.
+ */
+function singleConnectionPool(client: PoolClient, onBroken: () => void): Pool {
+  const lent = new Proxy(client, {
+    get(target, prop) {
+      if (prop === "release") {
+        return (err?: Error | boolean) => {
+          if (err) onBroken();
+        };
+      }
+      const value = Reflect.get(target, prop, target);
+      return typeof value === "function" ? value.bind(target) : value;
+    },
+  });
+  return {
+    connect: async () => lent,
+    query: (...args: Parameters<PoolClient["query"]>) => client.query(...args),
+  } as unknown as Pool;
 }
 
 async function payWhileHoldingLinkLock(

@@ -24,6 +24,10 @@ export async function withTransaction<T>(
    * fn; nothing here upgrades the level.
    */
   const client = await pool.connect();
+  // A client whose ROLLBACK failed is in an unknown state: it must be destroyed
+  // (release(err)), not handed back to the pool, and the ORIGINAL error must
+  // surface, not the rollback's.
+  let discard: Error | undefined;
   try {
     await client.query("BEGIN");
     try {
@@ -31,10 +35,14 @@ export async function withTransaction<T>(
       await client.query("COMMIT");
       return result;
     } catch (err) {
-      await client.query("ROLLBACK");
+      try {
+        await client.query("ROLLBACK");
+      } catch (rollbackErr) {
+        discard = rollbackErr instanceof Error ? rollbackErr : new Error(String(rollbackErr));
+      }
       throw err;
     }
   } finally {
-    client.release();
+    client.release(discard);
   }
 }

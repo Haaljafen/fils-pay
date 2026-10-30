@@ -123,7 +123,10 @@ test("create -> public read (active) -> pay (approved) -> public read (paid) -> 
   assert.equal(readActive.statusCode, 200, readActive.body);
   assert.equal(readActive.json().status, "active");
   assert.equal(readActive.json().amountFils, 4_750);
-  assert.ok(readActive.json().merchantPublicKey?.startsWith("fp_"));
+  // A public, unauthenticated read must carry no API-key material at all.
+  assert.equal(readActive.json().merchantPublicKey, undefined);
+  assert.equal(readActive.json().merchantIntegrationId, undefined);
+  assert.ok(!readActive.body.includes(rawKey.slice(0, 16)), "the response must not contain the key prefix");
 
   const payRes = await pay(link.token, APPROVED_CARD);
   assert.equal(payRes.statusCode, 200, payRes.body);

@@ -17,9 +17,9 @@ export function dash(value: string | number | null | undefined): string {
   return value === null || value === undefined || value === "" ? "—" : String(value);
 }
 
-/** Browser-local rendering, not Asia/Bahrain. */
+/** Asia/Bahrain wall time, the zone settlement days and reports are cut in (not the browser's). */
 export function dateTime(iso: string | null | undefined): string {
-  return iso ? new Date(iso).toLocaleString() : "—";
+  return iso ? new Date(iso).toLocaleString("en-GB", { timeZone: "Asia/Bahrain" }) : "—";
 }
 
 /**
