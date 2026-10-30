@@ -4,6 +4,7 @@ import { cancelPaymentLink, listPaymentLinks } from "../../api/paymentLinks.js";
 import { describeError } from "../../api/client.js";
 import { useDashboardAuth } from "../../auth/DashboardAuthContext.js";
 import { RequireRole } from "../../auth/RequireRole.js";
+import { InlineConfirm } from "../../components/InlineConfirm.js";
 import { bhd, dash, dateTime } from "../../format.js";
 import type { PaymentLinkDto } from "../../types.js";
 
@@ -37,6 +38,7 @@ export function PaymentLinkDetailPage() {
 
   const [state, setState] = useState<LoadState>({ kind: "loading" });
   const [actionError, setActionError] = useState<string | null>(null);
+  const [confirmingCancel, setConfirmingCancel] = useState(false);
   const [copied, setCopied] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
@@ -57,9 +59,9 @@ export function PaymentLinkDetailPage() {
 
   async function handleCancel(): Promise<void> {
     if (!merchantId || !id) return;
-    if (!window.confirm("Cancel this payment link? It can no longer be paid.")) return;
     setSubmitting(true);
     setActionError(null);
+    setConfirmingCancel(false);
     try {
       await cancelPaymentLink(merchantId, id);
       await load();
@@ -165,10 +167,19 @@ export function PaymentLinkDetailPage() {
             type="button"
             className="dash-button"
             disabled={submitting}
-            onClick={() => void handleCancel()}
+            onClick={() => setConfirmingCancel(true)}
           >
             {submitting ? "Canceling..." : "Cancel payment link"}
           </button>
+          {confirmingCancel ? (
+            <InlineConfirm
+              message="Cancel this payment link? It can no longer be paid."
+              confirmLabel="Cancel payment link"
+              busy={submitting}
+              onConfirm={() => void handleCancel()}
+              onCancel={() => setConfirmingCancel(false)}
+            />
+          ) : null}
         </RequireRole>
       ) : null}
 

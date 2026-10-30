@@ -8,6 +8,7 @@ import {
 } from "../../api/transactions.js";
 import { ApiError, describeError } from "../../api/client.js";
 import { RequireRole } from "../../auth/RequireRole.js";
+import { InlineConfirm } from "../../components/InlineConfirm.js";
 import { bhd, dash, dateTime } from "../../format.js";
 import type { TransactionDto, TransactionEventDto } from "../../types.js";
 import { RefundDrawer } from "./RefundDrawer.js";
@@ -33,6 +34,7 @@ export function TransactionDetailPage() {
   const [state, setState] = useState<LoadState>({ kind: "loading" });
   const [events, setEvents] = useState<TransactionEventDto[]>([]);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [confirmingVoid, setConfirmingVoid] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [captureOpen, setCaptureOpen] = useState(false);
   const [captureAmount, setCaptureAmount] = useState("");
@@ -90,11 +92,9 @@ export function TransactionDetailPage() {
   /** Only offered while status is authorized. */
   async function handleVoid(): Promise<void> {
     if (!id) return;
-    if (!window.confirm("Void this authorization? The held funds are released and cannot be captured afterwards.")) {
-      return;
-    }
     setSubmitting(true);
     setActionError(null);
+    setConfirmingVoid(false);
     try {
       // An already-voided transaction also answers `200` with the voided row —
       // indistinguishable from a first void on the wire, and correctly so:
@@ -213,10 +213,19 @@ export function TransactionDetailPage() {
                 type="button"
                 className="dash-button"
                 disabled={submitting}
-                onClick={() => void handleVoid()}
+                onClick={() => setConfirmingVoid(true)}
               >
                 Void
               </button>
+            ) : null}
+            {confirmingVoid ? (
+              <InlineConfirm
+                message="Void this authorization? The held funds are released and cannot be captured afterwards."
+                confirmLabel="Void"
+                busy={submitting}
+                onConfirm={() => void handleVoid()}
+                onCancel={() => setConfirmingVoid(false)}
+              />
             ) : null}
           </div>
         ) : null}

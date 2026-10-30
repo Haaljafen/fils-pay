@@ -7,6 +7,7 @@ import {
 } from "../../api/webhooks.js";
 import { describeError } from "../../api/client.js";
 import { useDashboardAuth } from "../../auth/DashboardAuthContext.js";
+import { InlineConfirm } from "../../components/InlineConfirm.js";
 import { dateTime } from "../../format.js";
 import type { WebhookEndpointDto } from "../../types.js";
 
@@ -26,6 +27,7 @@ export function WebhookEndpointListPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<WebhookEndpointDto | null>(null);
 
   const load = useCallback(async () => {
     if (!merchantId) return;
@@ -65,14 +67,8 @@ export function WebhookEndpointListPage() {
   async function handleDelete(endpoint: WebhookEndpointDto): Promise<void> {
     if (!merchantId) return;
     // A hard delete — the endpoint row is gone, while its delivery log
-    // outlives it. Irreversible, so it asks first.
-    if (
-      !window.confirm(
-        `Delete ${endpoint.url}? This cannot be undone, and its secret cannot be recovered.`,
-      )
-    ) {
-      return;
-    }
+    // outlives it. Irreversible, so the user confirms in the box above the table first.
+    setPendingDelete(null);
     setBusyId(endpoint.id);
     setError(null);
     try {
@@ -96,6 +92,15 @@ export function WebhookEndpointListPage() {
       </p>
 
       {error ? <p className="dash-error">{error}</p> : null}
+      {pendingDelete ? (
+        <InlineConfirm
+          message={`Delete ${pendingDelete.url}? This cannot be undone, and its secret cannot be recovered.`}
+          confirmLabel="Delete"
+          busy={busyId !== null}
+          onConfirm={() => void handleDelete(pendingDelete)}
+          onCancel={() => setPendingDelete(null)}
+        />
+      ) : null}
 
       <table className="dash-table">
         <thead>
@@ -133,7 +138,7 @@ export function WebhookEndpointListPage() {
                   type="button"
                   className="dash-button"
                   disabled={busyId === endpoint.id}
-                  onClick={() => void handleDelete(endpoint)}
+                  onClick={() => setPendingDelete(endpoint)}
                 >
                   Delete
                 </button>

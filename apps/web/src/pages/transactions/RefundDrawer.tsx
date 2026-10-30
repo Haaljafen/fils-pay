@@ -3,6 +3,7 @@ import { formatBhd, parseBhdToFils, toFils } from "@filspay/money";
 import { request, describeError } from "../../api/client.js";
 import { useDashboardAuth } from "../../auth/DashboardAuthContext.js";
 import { RequireRole } from "../../auth/RequireRole.js";
+import { InlineConfirm } from "../../components/InlineConfirm.js";
 import { bhd } from "../../format.js";
 import type { TransactionDto } from "../../types.js";
 
@@ -34,12 +35,14 @@ export function RefundDrawer({ txn, onRefunded }: RefundDrawerProps) {
   const [amount, setAmount] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // The refund waiting for the user's yes/no; undefined amount means "everything refundable".
+  const [pending, setPending] = useState<{ amountFils?: number; text: string } | null>(null);
 
   const merchantId = me?.merchant.id;
   const remainingFils = txn.capturedFils - txn.refundedFils;
   if (!REFUNDABLE_STATUSES.has(txn.status) || remainingFils <= 0) return null;
 
-  async function handleRefund(event: React.FormEvent): Promise<void> {
+  function handleRefund(event: React.FormEvent): void {
     event.preventDefault();
     if (!merchantId) return;
 
@@ -57,11 +60,12 @@ export function RefundDrawer({ txn, onRefunded }: RefundDrawerProps) {
         return;
       }
     }
-    const refundText = bhd(amountFils ?? remainingFils);
-    if (!window.confirm(`Refund ${refundText} to the cardholder? This cannot be recalled.`)) {
-      return;
-    }
+    setError(null);
+    setPending({ amountFils, text: bhd(amountFils ?? remainingFils) });
+  }
 
+  async function submitRefund(amountFils: number | undefined): Promise<void> {
+    if (!merchantId) return;
     setSubmitting(true);
     setError(null);
     try {
@@ -74,9 +78,11 @@ export function RefundDrawer({ txn, onRefunded }: RefundDrawerProps) {
       });
       setOpen(false);
       setAmount("");
+      setPending(null);
       // Refetch: the refund changed the status, totals and timeline.
       await onRefunded();
     } catch (err) {
+      setPending(null);
       setError(describeError(err));
     } finally {
       setSubmitting(false);
@@ -115,6 +121,15 @@ export function RefundDrawer({ txn, onRefunded }: RefundDrawerProps) {
             Refund
           </button>
         )}
+        {pending ? (
+          <InlineConfirm
+            message={`Refund ${pending.text} to the cardholder? This cannot be recalled.`}
+            confirmLabel="Refund"
+            busy={submitting}
+            onConfirm={() => void submitRefund(pending.amountFils)}
+            onCancel={() => setPending(null)}
+          />
+        ) : null}
       </div>
     </RequireRole>
   );
