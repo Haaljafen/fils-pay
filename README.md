@@ -1807,3 +1807,35 @@ Production compose with resource limits (API 0.5 vCPU / 512 MB), restart policie
 a connection cap that turns excess traffic away with 503, an API database pool raised from 5 to 30 (capture holds a connection
 during the acquirer call, which capped throughput near 10 checkouts/s), Dockerfiles, and `docs/FINDINGS.md`.
 Measured capacity: about 8-10 comfortable concurrent shoppers, saturating near 20 checkouts/s on the 1 vCPU / 2 GB server.
+
+---
+
+# Status update (team Shecure, 30 Oct 2026)
+
+Numbered bugs from the other sessions are in `docs/README.md`. This section covers what changed since the last update above.
+
+## Added
+
+- **Merchant registration:** `/dashboard/register` creates a merchant and its owner through the existing signup API. The sign-in page links to it.
+- **Email login codes:** codes are emailed through Resend when `RESEND_API_KEY` is set (SMTP is the fallback). A code is never written to the log or returned in a response, and a mail failure never blocks a login. `OTP_EMAIL_OVERRIDE` sends every demo code to one inbox.
+- **Operator log for codes:** with `OTP_LOG_CODE=true`, codes are written to the server log for accounts on `OTP_LOG_MERCHANT_USER_IDS`, `OTP_LOG_MERCHANT_EMAILS` or `OTP_LOG_ADMIN_USER_IDS`. Off by default.
+- **Payment-link sweep timer:** stuck payment links are swept on a schedule (`474efb7`, `d85611d`).
+- **Inline confirm boxes:** refund, void, cancel-link and webhook-delete use an in-page confirm instead of `window.confirm` (`9bb4b13`).
+- **Role-access e2e test:** `e2e/web-roles.spec.ts` checks support can read payment links, gets 403 on create, and owners pass the gate.
+
+## Removed
+
+- **Admin self-registration:** the admin Register page and its API endpoint are gone (`b8a4866`). Admin accounts are created only by existing operators.
+
+## Changed
+
+- **MDR recalculation** refuses batches whose linked captures don't add up to the batch gross, and **credit requests** reject future effective dates (`45b5131`).
+
+## Open
+
+- **Empty OTP allowlist:** with `OTP_LOG_CODE=true`, an empty allowlist still logs every account's code. The fix is to log only listed accounts. The running server has both lists set, so it isn't affected. The change hasn't been made yet.
+- **`ops/otp-reveal.sh`:** on `main`, not running on the server. It reads login codes from the server log. Keep it or remove it before judging.
+- **`ops/nginx.conf`:** not in the repo. Its edits come from several sessions and need an owner.
+- **Port edits in `playwright.config.ts` and the e2e vite configs:** test-only, and they're committed on `main`. Confirm they should stay.
+- **Hosted site:** Dilmune's Sites feature is blocked on the Shecure server, so the site has no domain name and runs on `https://139.59.66.122` with a self-signed certificate.
+- **Login codes for new users:** emails go only to the owner's inbox until a sending domain is verified. Until then, new users can't log in on the hosted site.
