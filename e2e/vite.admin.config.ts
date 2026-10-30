@@ -10,9 +10,9 @@ export default mergeConfig(
     // Empty base = same-origin requests, which the /v1 proxy above forwards.
     define: { "import.meta.env.VITE_ADMIN_API_BASE_URL": JSON.stringify("") },
     server: {
-      port: 5181,
+      port: 5281,
       strictPort: true,
-      proxy: { "/v1": "http://127.0.0.1:3100" },
+      proxy: { "/v1": "http://127.0.0.1:3200" },
     },
   }),
 );
