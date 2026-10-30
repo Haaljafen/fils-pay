@@ -41,7 +41,10 @@ services:
       # Production mode requires an https:// base for payment-link URLs. Needs real TLS in front before it works for customers.
       CHECKOUT_BASE_URL: ${CHECKOUT_BASE_URL:?set in ops/.env.prod, https://...}
       OTP_DEV_EXPOSE: ${OTP_DEV_EXPOSE:-false}
+      # Off by default. true writes login codes to the server log (not the HTTP response) so an operator with SSH can log in.
       OTP_LOG_CODE: ${OTP_LOG_CODE:-false}
+      OTP_LOG_MERCHANT_USER_IDS: ${OTP_LOG_MERCHANT_USER_IDS:-}
+      OTP_LOG_ADMIN_USER_IDS: ${OTP_LOG_ADMIN_USER_IDS:-}
       # A capture holds a connection while it waits on the acquirer (100-400 ms), so the default pool of 5
       # capped the whole API at ~10 checkouts/s with the CPU ~90% idle.
       PG_POOL_MAX: "30"

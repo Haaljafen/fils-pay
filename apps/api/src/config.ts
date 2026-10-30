@@ -27,10 +27,11 @@ export interface Config {
    *  when on, the password alone logs anyone in, so it must never depend on
    *  NODE_ENV being set correctly on a hosted box. Refused in production. */
   otpDevExpose: boolean;
-  /** Writes the OTP code to the server's own log in production, never to a
-   *  response, for a box with no email/SMS sender. Off unless OTP_LOG_CODE=true:
-   *  when on, anyone who can read the logs holds the second factor. */
+  /** Write the OTP code to the server's own log (never to the HTTP response). Off by default; see auth/notifier.ts. */
   otpLogCode: boolean;
+  /** With otpLogCode, only these user ids get their code logged (comma-separated env lists). */
+  otpLogMerchantUserIds: string[];
+  otpLogAdminUserIds: string[];
 
   argon2MemoryKib: number;
   argon2TimeCost: number;
@@ -210,7 +211,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   if (nodeEnv === "production" && otpDevExpose) {
     throw new Error("loadConfig: OTP_DEV_EXPOSE must not be enabled when NODE_ENV=production");
   }
-  const otpLogCode = parseBoolEnv(env.OTP_LOG_CODE, false);
 
   const acquirerCallbackSigningSecret = env.ACQUIRER_CALLBACK_SIGNING_SECRET ?? "";
   if (nodeEnv === "production" && acquirerCallbackSigningSecret === "") {
@@ -240,7 +240,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     otpCodeLength: parseIntEnv(env.OTP_CODE_LENGTH, 6),
     otpMaxAttempts: parseIntEnv(env.OTP_MAX_ATTEMPTS, 5),
     otpDevExpose,
-    otpLogCode,
+    otpLogCode: parseBoolEnv(env.OTP_LOG_CODE, false),
+    otpLogMerchantUserIds: (env.OTP_LOG_MERCHANT_USER_IDS ?? "").split(",").map((s) => s.trim()).filter(Boolean),
+    otpLogAdminUserIds: (env.OTP_LOG_ADMIN_USER_IDS ?? "").split(",").map((s) => s.trim()).filter(Boolean),
 
     argon2MemoryKib: parseIntEnv(env.ARGON2_MEMORY_KIB, 19_456),
     argon2TimeCost: parseIntEnv(env.ARGON2_TIME_COST, 2),
