@@ -80,6 +80,12 @@ export function parseCreditRequestInput(body: unknown): CreditRequestDraft {
       "effectiveDate must be a real calendar date formatted YYYY-MM-DD",
     );
   }
+  // Business dates are Asia/Bahrain (UTC+3, no DST). A future-dated credit would
+  // post into a period that has not happened yet.
+  const bahrainToday = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Bahrain" });
+  if (rawDate > bahrainToday) {
+    throw new BadRequestError("invalid_effective_date", "effectiveDate cannot be in the future");
+  }
 
   return { baseAmountFils, reasonCode, memo, reverseFee, effectiveDate: rawDate };
 }
