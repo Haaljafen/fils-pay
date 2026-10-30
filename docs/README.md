@@ -54,7 +54,7 @@ wrong, why it happens, and what it breaks.
 | 53 | The settlement summary double-counts a transaction captured twice | ✅ Fixed |
 | 54 | A capture its day's batch missed is never paid out | ✅ Fixed |
 | 55 | Production has no way to get a login code | 🟡 Workaround: `OTP_LOG_CODE`; no email/SMS sender yet |
-| 56 | The hosted dashboards can show a blank page after a rebuild | ✅ Fixed |
+| 79 | The hosted dashboards can show a blank page after a rebuild | ✅ Fixed |
 
 ---
 
@@ -1584,7 +1584,7 @@ server access has to pass it on. The line carries the user's id, not their email
 
 ---
 
-## 56. The hosted dashboards can show a blank page after a rebuild ✅ Fixed
+## 79. The hosted dashboards can show a blank page after a rebuild ✅ Fixed
 
 **Files:** `ops/nginx.conf`, `apps/web/src/router.tsx`,
 `apps/admin/src/router.tsx`, `scripts/nginx_conf.test.ts`

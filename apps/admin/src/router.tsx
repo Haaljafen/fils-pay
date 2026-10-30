@@ -12,6 +12,8 @@ import { WebhookReplayPage } from "./pages/webhooks/WebhookReplayPage.js";
 // MK: /v2 routes live behind VITE_ADMIN_V2 — see the admin v2 doc
 export const router = createBrowserRouter([
   { path: "/login", element: <LoginPage /> },
+  // An unknown path would otherwise be React Router's raw "404 Not Found" error page.
+  { path: "*", element: <Navigate to="/" replace /> },
   {
     // Everything below the login screen shares one shell and one guard. The
     // guard is navigation only — the API re-checks the admin session on

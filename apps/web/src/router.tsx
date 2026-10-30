@@ -23,6 +23,8 @@ export const router = createBrowserRouter([
   // "/" had no route, so the site's front door was a React Router "404 Not Found" error page.
   { path: "/", element: <Navigate to="/dashboard" replace /> },
   { path: "/pay/:token", element: <CheckoutPage /> },
+  // Same for any other unknown path, such as /admin typed on this port.
+  { path: "*", element: <Navigate to="/" replace /> },
 
   {
     // The session provider wraps the dashboard subtree only — never
