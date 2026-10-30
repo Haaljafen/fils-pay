@@ -192,11 +192,23 @@ export function MerchantListPage() {
                   <code>{merchant.id}</code>
                 </div>
               </td>
-              <td>{merchant.status}</td>
-              <td>{merchant.onboardingStatus}</td>
-              <td>{merchant.kycPassed ? "passed" : "not passed"}</td>
+              <td>
+                <span className={`admin-chip admin-chip-${merchant.status}`}>{merchant.status}</span>
+              </td>
+              <td>
+                <span className={`admin-chip admin-chip-${merchant.onboardingStatus}`}>
+                  {merchant.onboardingStatus}
+                </span>
+              </td>
+              <td>
+                <span className={`admin-chip ${merchant.kycPassed ? "admin-chip-active" : "admin-chip-pending"}`}>
+                  {merchant.kycPassed ? "passed" : "not passed"}
+                </span>
+              </td>
               <td>{(merchant.mdrBps / 100).toFixed(2)}%</td>
-              <td>{merchant.testMode ? "test" : "live"}</td>
+              <td>
+                <span className="admin-chip">{merchant.testMode ? "test" : "live"}</span>
+              </td>
               <td>{new Date(merchant.createdAt).toLocaleDateString()}</td>
             </tr>
           ))}

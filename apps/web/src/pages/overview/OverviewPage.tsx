@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { getPayoutTrends, getTopLinks, getVolumes } from "../../api/analytics.js";
 import { describeError } from "../../api/client.js";
+import { useDashboardAuth } from "../../auth/DashboardAuthContext.js";
 import { StalenessBadge } from "../../components/StalenessBadge.js";
 import { bhd, dash, dateTime } from "../../format.js";
 import { formatCount } from "../../utils/helpers.js";
@@ -14,6 +15,7 @@ import type { PayoutTrendsResponse, TopLinksResponse, VolumesResponse } from "..
 const POLL_MS = 60_000;
 
 export function OverviewPage() {
+  const { me } = useDashboardAuth();
   // Left blank, the server applies its own "last 30 Asia/Bahrain days"
   // default — the client does not compute a competing one.
   const [from, setFrom] = useState("");
@@ -65,9 +67,47 @@ export function OverviewPage() {
 
   const peakGross = Math.max(1, ...(volumes?.points.map((point) => point.capturedGrossFils) ?? [1]));
 
+  // Integer fils totals of the rows the tables below already show; nothing extra is fetched.
+  const totals = volumes
+    ? volumes.points.reduce(
+        (sum, point) => ({
+          grossFils: sum.grossFils + point.capturedGrossFils,
+          captured: sum.captured + point.capturedCount,
+          refundedFils: sum.refundedFils + point.refundGrossFils,
+        }),
+        { grossFils: 0, captured: 0, refundedFils: 0 },
+      )
+    : null;
+  const paidOutFils = payouts?.points
+    .filter((point) => point.status === "paid")
+    .reduce((sum, point) => sum + point.netPayoutFils, 0);
+
   return (
     <section>
-      <h1>Overview</h1>
+      <div className="dash-hero">
+        <div className="dash-hero-main">
+          <h1>Overview</h1>
+          <p className="dash-hero-label">
+            Captured {from || to ? `${from || "start"} to ${to || "now"}` : "in the last 30 days"}
+          </p>
+          <p className="dash-hero-amount">{totals ? bhd(totals.grossFils) : "—"}</p>
+          {me ? <p className="dash-hero-label">{me.merchant.displayName}</p> : null}
+        </div>
+        <div className="dash-tiles">
+          <div className="dash-tile">
+            <strong>{totals ? formatCount(totals.captured) : "—"}</strong>
+            <span>Captured payments</span>
+          </div>
+          <div className="dash-tile">
+            <strong>{paidOutFils === undefined ? "—" : bhd(paidOutFils)}</strong>
+            <span>Paid out</span>
+          </div>
+          <div className="dash-tile">
+            <strong>{totals ? bhd(totals.refundedFils) : "—"}</strong>
+            <span>Refunded</span>
+          </div>
+        </div>
+      </div>
 
       <form
         className="dash-form dash-form-inline"

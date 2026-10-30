@@ -3,6 +3,16 @@ import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import { useDashboardAuth } from "../auth/DashboardAuthContext.js";
 import { RequireRole } from "../auth/RequireRole.js";
 import { describeError } from "../api/client.js";
+import {
+  BrandMark,
+  LinkIcon,
+  LogoutIcon,
+  OverviewIcon,
+  ReconciliationIcon,
+  SettlementIcon,
+  TransactionsIcon,
+  WebhookIcon,
+} from "./icons.js";
 import "../dashboard.css";
 
 /** Nav shell for every merchant dashboard screen. No impersonation banner
@@ -27,41 +37,78 @@ export function DashboardLayout() {
 
   return (
     <div className="dash-shell">
-      <header className="dash-header">
-        <div className="dash-brand">FilsPay</div>
+      <aside className="dash-side">
+        <div className="dash-brand">
+          <BrandMark />
+          <div>
+            <strong>FilsPay</strong>
+            <span>Merchant dashboard</span>
+          </div>
+        </div>
+
         <nav className="dash-nav">
-          <NavLink to="/dashboard/transactions">Transactions</NavLink>
-          <NavLink to="/dashboard/payment-links">Payment links</NavLink>
+          <NavLink to="/dashboard/transactions">
+            <TransactionsIcon />
+            <span>Transactions</span>
+          </NavLink>
+          <NavLink to="/dashboard/payment-links">
+            <LinkIcon />
+            <span>Payment links</span>
+          </NavLink>
           {/* Every webhook route — including the plain list read — is
               owner/finance-only server-side, so the link itself is
               hidden from support rather than offered and then refused. */}
           <RequireRole allow={["owner", "finance"]}>
-            <NavLink to="/dashboard/webhooks">Webhooks</NavLink>
+            <NavLink to="/dashboard/webhooks">
+              <WebhookIcon />
+              <span>Webhooks</span>
+            </NavLink>
           </RequireRole>
-          <NavLink to="/dashboard/settlement">Settlement</NavLink>
+          <NavLink to="/dashboard/settlement">
+            <SettlementIcon />
+            <span>Settlement</span>
+          </NavLink>
           <RequireRole allow={["owner", "finance"]}>
-            <NavLink to="/dashboard/reconciliation">Reconciliation</NavLink>
+            <NavLink to="/dashboard/reconciliation">
+              <ReconciliationIcon />
+              <span>Reconciliation</span>
+            </NavLink>
           </RequireRole>
-          <NavLink to="/dashboard/overview">Overview</NavLink>
+          <NavLink to="/dashboard/overview">
+            <OverviewIcon />
+            <span>Overview</span>
+          </NavLink>
         </nav>
-        <div className="dash-identity">
-          {me ? (
-            <span>
-              {me.email} <span className="dash-role-chip">{me.role}</span>
-              <span className="dash-muted"> · {me.merchant.displayName}</span>
-            </span>
-          ) : null}
-          <button type="button" className="dash-button" onClick={() => void handleSignOut()}>
-            Log out
-          </button>
-        </div>
-      </header>
+      </aside>
 
-      {error ? <p className="dash-error">{error}</p> : null}
+      <div className="dash-column">
+        <header className="dash-header">
+          {me ? <div className="dash-context">{me.merchant.displayName}</div> : null}
+          <div className="dash-identity">
+            {me ? (
+              <div className="dash-user">
+                <span className="dash-avatar" aria-hidden="true">
+                  {me.email.slice(0, 2).toUpperCase()}
+                </span>
+                <div>
+                  <strong>{me.email}</strong>
+                  <span className="dash-role-chip">{me.role}</span>
+                </div>
+              </div>
+            ) : null}
+            <button type="button" className="dash-button dash-logout" onClick={() => void handleSignOut()}>
+              <LogoutIcon />
+              Log out
+            </button>
+          </div>
+        </header>
 
-      <main className="dash-main">
-        <Outlet />
-      </main>
+        {error ? <p className="dash-error">{error}</p> : null}
+
+        <main className="dash-main">
+          <Outlet />
+        </main>
+      </div>
     </div>
   );
 }

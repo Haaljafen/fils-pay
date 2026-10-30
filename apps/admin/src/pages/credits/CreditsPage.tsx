@@ -112,7 +112,7 @@ export function CreditsPage() {
         <code>super_admin</code> operator — not the one who raised it — approves it.
       </p>
 
-      <nav className="admin-nav">
+      <nav className="admin-tabs">
         {STATUS_TABS.map((tab) => (
           <button
             key={tab.value}

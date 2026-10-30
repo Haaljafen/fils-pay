@@ -1,192 +1,724 @@
-/* No design system, no UI kit — the same "real but small" minimalism
-   apps/web's checkout page ships with. Just enough for dense operational
-   tables to be readable and for the impersonation banner to be impossible
-   to overlook. */
+/* The admin console's stylesheet: the same design as apps/web/src/dashboard.css
+   (parchment, ink and oxblood; serif headings, sans text). Only the admin console
+   loads this bundle, so bare element rules are fine. */
+@import "@fontsource/source-serif-4/400.css";
+@import "@fontsource/ibm-plex-sans/400.css";
+@import "@fontsource/ibm-plex-sans/500.css";
+@import "@fontsource/ibm-plex-sans/600.css";
+
+.admin-shell,
+.admin-login,
+.admin-centered {
+  --ink: #1f1a17;
+  --ink-soft: #655b52;
+  --paper: #f4efe6;
+  --card: #fffdf9;
+  --tint: #f8f4ec;
+  --rule: #e0d8ca;
+  --rule-strong: #c9bea9;
+  --blood: #7f1d27;
+  --blood-dark: #65161e;
+  --blood-soft: #f6e4e1;
+  --amber: #7a5310;
+  --amber-soft: #f6ecd3;
+  --green: #2f5a3c;
+  --green-soft: #e3ecdf;
+  --on-ink: #f4efe6;
+  --on-ink-soft: #b9ae9f;
+  --serif: "Source Serif 4", Georgia, "Times New Roman", serif;
+  font-family: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--ink);
+}
 
 body {
   margin: 0;
-  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
-  font-size: 15px;
-  color: #1a1a1a;
-  background: #fafafa;
-}
-
-code {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 0.9em;
+  background: #f4efe6;
 }
 
 .admin-shell {
   min-height: 100vh;
+  background: var(--paper);
 }
 
-.admin-header {
+.admin-frame {
+  display: grid;
+  grid-template-columns: 15rem minmax(0, 1fr);
+  min-height: 100vh;
+}
+
+.admin-shell h1,
+.admin-login h1 {
+  margin: 0 0 1.25rem;
+  font-family: var(--serif);
+  font-size: 2rem;
+  font-weight: 400;
+  letter-spacing: -0.01em;
+  line-height: 1.2;
+}
+
+.admin-shell h2 {
+  margin: 2rem 0 0.75rem;
+  font-family: var(--serif);
+  font-size: 1.25rem;
+  font-weight: 400;
+}
+
+a {
+  color: var(--blood);
+  font-weight: 500;
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.admin-shell code,
+.admin-login code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.85em;
+}
+
+.admin-shell :focus-visible,
+.admin-login :focus-visible {
+  outline: 2px solid var(--blood);
+  outline-offset: 2px;
+}
+
+/* --- side column --- */
+.admin-side {
+  position: sticky;
+  top: 0;
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 1.5rem;
-  padding: 0.75rem 1.5rem;
-  background: #fff;
-  border-bottom: 1px solid #ddd;
+  flex-direction: column;
+  gap: 1.75rem;
+  box-sizing: border-box;
+  height: 100vh;
+  padding: 1.5rem 0;
+  background: var(--ink);
+  color: var(--on-ink);
+  overflow-y: auto;
 }
 
 .admin-brand {
-  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  padding: 0 1.25rem;
+}
+
+.admin-brand > div {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.25;
+}
+
+.admin-brand strong {
+  font-family: var(--serif);
+  font-size: 1.25rem;
+  font-weight: 400;
+}
+
+.admin-brand span {
+  color: var(--on-ink-soft);
+  font-size: 0.75rem;
 }
 
 .admin-nav {
   display: flex;
-  gap: 1rem;
+  flex-direction: column;
+  gap: 0.1rem;
 }
 
-.admin-nav a {
-  color: #1a1a1a;
+.admin-shell .admin-nav a {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  padding: 0.6rem 1.25rem;
+  border-left: 3px solid transparent;
+  color: var(--on-ink-soft);
+  font-weight: 400;
   text-decoration: none;
+  transition: background-color 0.12s, color 0.12s;
 }
 
-.admin-nav a.active {
-  font-weight: 700;
-  text-decoration: underline;
+.admin-shell .admin-nav a:hover {
+  background: #2c2622;
+  color: var(--on-ink);
+}
+
+.admin-shell .admin-nav a.active {
+  border-left-color: #c2505a;
+  background: #2c2622;
+  color: #fff;
+  font-weight: 500;
+}
+
+.admin-shell .admin-nav a:focus-visible {
+  outline-color: var(--on-ink);
+  outline-offset: -3px;
+}
+
+.admin-nav svg {
+  flex: none;
+  width: 19px;
+  height: 19px;
+}
+
+/* --- top line --- */
+.admin-column {
+  min-width: 0;
+}
+
+.admin-header {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.85rem 2rem;
+  border-bottom: 1px solid var(--rule);
+  background: var(--card);
+}
+
+.admin-context {
+  min-width: 0;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .admin-identity {
   margin-left: auto;
   display: flex;
   align-items: center;
-  gap: 0.75rem;
+  gap: 1rem;
+  min-width: 0;
+}
+
+.admin-user {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  min-width: 0;
+}
+
+.admin-user > div {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  line-height: 1.25;
+}
+
+.admin-user strong {
+  font-size: 0.85rem;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.admin-avatar {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 2.2rem;
+  height: 2.2rem;
+  border-radius: 50%;
+  background: var(--blood);
+  color: #fff;
+  font-size: 0.75rem;
+  font-weight: 600;
 }
 
 .admin-role-chip {
-  padding: 0.1rem 0.4rem;
-  border: 1px solid #999;
-  border-radius: 3px;
-  font-size: 0.8em;
+  color: var(--ink-soft);
+  font-size: 0.75rem;
 }
 
 .admin-main {
-  max-width: 70rem;
+  max-width: 82rem;
   margin: 0 auto;
-  padding: 1.5rem;
+  padding: 1.75rem 2rem 3.5rem;
+}
+
+.admin-main > section > p {
+  max-width: 76ch;
+}
+
+/* --- login --- */
+.admin-login {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  min-height: 100vh;
+  background: var(--paper);
+}
+
+.admin-login-panel {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 3rem;
+  padding: 2.5rem;
+  background: var(--ink);
+  color: var(--on-ink);
+  overflow: hidden;
+}
+
+/* Fine concentric rings, after the engraving on a banknote. */
+.admin-login-panel::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  right: -16rem;
+  width: 40rem;
+  height: 40rem;
+  border-radius: 50%;
+  background: repeating-radial-gradient(circle, transparent 0 11px, rgb(244 239 230 / 0.07) 11px 12px);
+  transform: translateY(-50%);
+}
+
+.admin-login-panel > * {
+  position: relative;
+}
+
+.admin-login-panel .admin-brand {
+  padding: 0;
+}
+
+.admin-login-tagline {
+  margin: 0 0 0.5rem;
+  font-family: var(--serif);
+  font-size: clamp(1.8rem, 3.2vw, 2.75rem);
+  letter-spacing: -0.01em;
+  line-height: 1.15;
+}
+
+.admin-login-copy {
+  margin: 0;
+  color: var(--on-ink-soft);
 }
 
 .admin-centered {
+  align-self: center;
+  justify-self: center;
+  box-sizing: border-box;
+  width: calc(100% - 3rem);
   max-width: 26rem;
-  margin: 4rem auto;
-  padding: 1.5rem;
+  margin: 2rem auto;
+  padding: 2.25rem;
+  border: 1px solid var(--rule);
+  border-radius: 8px;
+  background: var(--card);
 }
 
+.admin-centered .admin-form {
+  max-width: none;
+  margin-bottom: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+}
+
+.admin-centered .admin-form button {
+  align-self: stretch;
+  justify-content: center;
+}
+
+/* --- forms --- */
 .admin-form {
   display: flex;
   flex-direction: column;
-  gap: 0.75rem;
+  gap: 0.9rem;
   margin: 1rem 0;
   max-width: 40rem;
+  padding: 1.5rem;
+  border: 1px solid var(--rule);
+  border-radius: 8px;
+  background: var(--card);
+}
+
+.admin-form > button {
+  align-self: flex-start;
 }
 
 .admin-form-inline {
   flex-direction: row;
+  flex-wrap: wrap;
   align-items: flex-end;
+  max-width: none;
+  padding: 1rem 1.25rem;
+}
+
+.admin-form-inline > button {
+  align-self: flex-end;
 }
 
 .admin-form label {
   display: flex;
   flex-direction: column;
-  gap: 0.25rem;
+  gap: 0.3rem;
+  color: var(--ink-soft);
+  font-size: 0.82rem;
+  font-weight: 500;
 }
 
-.admin-form input,
-.admin-form select,
-.admin-form textarea {
-  padding: 0.4rem;
-  font: inherit;
-  border: 1px solid #bbb;
-  border-radius: 3px;
+.admin-form label:has(> input[type="checkbox"]),
+.admin-form label:has(> input[type="radio"]) {
+  flex-direction: row;
+  align-items: center;
+  color: var(--ink);
+  font-size: 0.9rem;
+  font-weight: 400;
 }
 
-/* MK: global button style, temporary until the design system (Nov 2025) */
-button {
-  padding: 0.4rem 0.8rem;
-  font: inherit;
-  cursor: pointer;
-  border: 1px solid #888;
-  border-radius: 3px;
+.admin-shell input:not([type="checkbox"], [type="radio"]),
+.admin-shell select,
+.admin-shell textarea,
+.admin-login input:not([type="checkbox"], [type="radio"]) {
+  box-sizing: border-box;
+  max-width: 100%;
+  min-height: 2.5rem;
+  padding: 0.4rem 0.7rem;
+  border: 1px solid var(--rule-strong);
+  border-radius: 6px;
   background: #fff;
+  color: var(--ink);
+  font: inherit;
+  font-size: 0.95rem;
+  font-weight: 400;
+}
+
+.admin-shell input::placeholder,
+.admin-login input::placeholder {
+  color: #7d7267;
+}
+
+.admin-shell input[type="checkbox"],
+.admin-shell input[type="radio"] {
+  accent-color: var(--blood);
+}
+
+button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  box-sizing: border-box;
+  min-height: 2.5rem;
+  padding: 0.35rem 1.1rem;
+  border: 1px solid var(--rule-strong);
+  border-radius: 6px;
+  background: var(--card);
+  color: var(--ink);
+  font: inherit;
+  font-size: 0.9rem;
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+  text-decoration: none;
+  transition: background-color 0.12s, border-color 0.12s;
+}
+
+button[type="submit"] {
+  border-color: var(--blood);
+  background: var(--blood);
+  color: #fff;
+}
+
+button:hover:not(:disabled) {
+  border-color: var(--ink-soft);
+  background: var(--tint);
+}
+
+button[type="submit"]:hover:not(:disabled) {
+  border-color: var(--blood-dark);
+  background: var(--blood-dark);
+  text-decoration: none;
 }
 
 button:disabled {
   cursor: default;
-  opacity: 0.6;
+  opacity: 0.55;
+}
+
+.admin-logout {
+  flex: none;
+}
+
+button + button {
+  margin-left: 0.5rem;
+}
+
+.admin-logout svg {
+  width: 16px;
+  height: 16px;
 }
 
 .admin-filters {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.75rem;
-  border: 1px solid #ddd;
-  padding: 0.5rem 0.75rem;
-  margin: 1rem 0;
+  align-items: center;
+  gap: 0.5rem 0.6rem;
+  min-width: 0;
+  margin: 0.75rem 0;
+  padding: 0.85rem 1.25rem;
+  border: 1px solid var(--rule);
+  border-radius: 8px;
+  background: var(--card);
+}
+
+.admin-filters legend {
+  float: left;
+  margin-right: 0.4rem;
+  padding: 0;
+  color: var(--ink-soft);
+  font-size: 0.82rem;
+  font-weight: 500;
 }
 
 .admin-filters label {
   display: flex;
   align-items: center;
-  gap: 0.25rem;
+  gap: 0.5rem;
+  color: var(--ink-soft);
+  font-size: 0.82rem;
+  font-weight: 500;
 }
 
+/* A checkbox in a filter bar reads as a toggle; the input stays focusable. */
+.admin-filters label:has(> input[type="checkbox"]) {
+  position: relative;
+  padding: 0.28rem 0.7rem;
+  border: 1px solid var(--rule-strong);
+  border-radius: 6px;
+  background: var(--card);
+  color: var(--ink);
+  cursor: pointer;
+  font-weight: 400;
+}
+
+.admin-filters label:has(> input[type="checkbox"]):hover {
+  background: var(--tint);
+}
+
+.admin-filters label:has(> input[type="checkbox"]:checked) {
+  border-color: var(--blood);
+  background: var(--blood);
+  color: #fff;
+  font-weight: 500;
+}
+
+.admin-filters label:has(> input[type="checkbox"]:focus-visible) {
+  outline: 2px solid var(--blood);
+  outline-offset: 2px;
+}
+
+.admin-filters input[type="checkbox"] {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.admin-filters label:has(> input[type="search"]),
+.admin-form-inline label:has(> input[type="search"]) {
+  flex: 1 1 22rem;
+  min-width: 0;
+}
+
+.admin-filters input[type="search"],
+.admin-form-inline input[type="search"] {
+  flex: 1;
+  width: 100%;
+}
+
+/* --- tables and detail lists --- */
 .admin-table {
   width: 100%;
-  border-collapse: collapse;
-  margin: 1rem 0;
-  background: #fff;
+  margin: 0.75rem 0 1.25rem;
+  border: 1px solid var(--rule);
+  border-collapse: separate;
+  border-spacing: 0;
+  border-radius: 8px;
+  background: var(--card);
+  font-variant-numeric: tabular-nums;
+  overflow: hidden;
 }
 
 .admin-table th,
 .admin-table td {
-  border: 1px solid #e0e0e0;
-  padding: 0.4rem 0.6rem;
+  padding: 0.7rem 1rem;
+  border-bottom: 1px solid var(--rule);
   text-align: left;
-  vertical-align: top;
+  vertical-align: middle;
+}
+
+.admin-table th {
+  border-bottom: 1px solid var(--rule-strong);
+  background: var(--tint);
+  color: var(--ink-soft);
+  font-size: 0.8rem;
+  font-weight: 500;
+}
+
+.admin-table button {
+  margin-left: 0;
+  min-height: 2rem;
+  margin: 0.1rem 0.25rem 0.1rem 0;
+  padding: 0.1rem 0.7rem;
+  font-size: 0.82rem;
+}
+
+.admin-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.admin-table tbody tr:hover td {
+  background: var(--tint);
 }
 
 .admin-dl {
   display: grid;
-  grid-template-columns: 12rem 1fr;
-  gap: 0.25rem 1rem;
-  margin: 1rem 0;
+  grid-template-columns: minmax(10rem, 16rem) minmax(0, 1fr);
+  margin: 0.75rem 0 1.25rem;
+  padding: 0.5rem 1.5rem;
+  border: 1px solid var(--rule);
+  border-radius: 8px;
+  background: var(--card);
+  font-variant-numeric: tabular-nums;
+}
+
+.admin-dl dt,
+.admin-dl dd {
+  margin: 0;
+  padding: 0.6rem 0;
+  border-bottom: 1px solid var(--rule);
 }
 
 .admin-dl dt {
-  font-weight: 600;
+  padding-right: 1rem;
+  color: var(--ink-soft);
 }
 
 .admin-dl dd {
-  margin: 0;
+  font-weight: 500;
+  overflow-wrap: anywhere;
 }
 
+.admin-dl dt:last-of-type,
+.admin-dl dd:last-of-type {
+  border-bottom: 0;
+}
+
+/* --- messages --- */
 .admin-muted {
-  color: #666;
+  color: var(--ink-soft);
+}
+
+.admin-hint {
+  margin: -0.4rem 0 0;
+  font-size: 0.8rem;
 }
 
 .admin-error {
-  padding: 0.6rem 0.8rem;
-  border: 1px solid #b00020;
-  background: #fdeaea;
-  color: #7a0016;
+  margin: 0.9rem 0;
+  padding: 0.65rem 1rem;
+  border: 1px solid #dfb6b0;
+  border-radius: 6px;
+  background: var(--blood-soft);
+  color: var(--blood-dark);
+  font-weight: 500;
+}
+
+.admin-column > .admin-error {
+  margin: 1rem 2rem 0;
 }
 
 .admin-notice {
-  padding: 0.6rem 0.8rem;
-  border: 1px solid #2a6f2a;
-  background: #eef7ee;
-  margin: 1rem 0;
+  margin: 0.9rem 0;
+  padding: 0.65rem 1rem;
+  border: 1px solid #bcd0b6;
+  border-radius: 6px;
+  background: var(--green-soft);
+  color: #234530;
+  font-weight: 500;
 }
 
 .admin-confirm {
-  padding: 0.8rem;
-  border: 2px solid #b06000;
-  background: #fff6e8;
-  margin: 1rem 0;
-  max-width: 40rem;
+  max-width: 44rem;
+  margin: 0.9rem 0;
+  padding: 1.25rem 1.5rem;
+  border: 1px solid var(--blood);
+  border-radius: 8px;
+  background: var(--card);
+}
+
+/* --- tabs inside a page; the current one is the disabled one --- */
+.admin-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.25rem;
+  margin: 1rem 0 0.75rem;
+  border-bottom: 1px solid var(--rule-strong);
+}
+
+.admin-tabs button {
+  min-height: 2.25rem;
+  margin: 0 0 -1px;
+  padding: 0.25rem 0.1rem;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  background: none;
+  color: var(--ink-soft);
+}
+
+.admin-tabs button:hover:not(:disabled) {
+  border-bottom-color: var(--rule-strong);
+  background: none;
+  color: var(--ink);
+}
+
+.admin-tabs button:disabled {
+  border-bottom-color: var(--blood);
+  color: var(--ink);
+  opacity: 1;
+}
+
+/* --- merchant list status labels --- */
+.admin-chip {
+  display: inline-block;
+  padding: 0.05rem 0.5rem;
+  border-radius: 4px;
+  background: var(--rule);
+  color: var(--ink);
+  font-size: 0.8rem;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.admin-chip-active,
+.admin-chip-approved {
+  background: var(--green-soft);
+  color: var(--green);
+}
+
+.admin-chip-pending,
+.admin-chip-submitted,
+.admin-chip-under_review {
+  background: var(--amber-soft);
+  color: var(--amber);
+}
+
+.admin-chip-suspended,
+.admin-chip-closed,
+.admin-chip-rejected {
+  background: var(--blood-soft);
+  color: var(--blood);
 }
 
 .admin-id-list {
@@ -194,35 +726,131 @@ button:disabled {
   overflow-y: auto;
 }
 
-/* Deliberately loud: an active impersonation grant must never be something
-   an operator can fail to notice. */
+/* Deliberately loud: an active impersonation grant must never be something an
+   operator can fail to notice. Hazard yellow, because oxblood and ink are the
+   page's own colours and would blend in. */
 .impersonation-banner {
   display: flex;
   align-items: center;
   gap: 1rem;
   padding: 0.75rem 1.5rem;
-  background: #7a0016;
-  color: #fff;
-  border-bottom: 4px solid #ffcc00;
+  background: #ffcc00;
+  color: #000;
+  border-bottom: 4px solid #000;
+  font-size: 1rem;
   position: sticky;
   top: 0;
   z-index: 10;
 }
 
-.impersonation-banner code {
-  color: #ffe;
-}
-
 .impersonation-banner button {
   margin-left: auto;
-  background: #fff;
-  color: #7a0016;
-  font-weight: 700;
-  border-color: #fff;
+  border-color: #000;
+  background: #000;
+  color: #ffcc00;
+  font-weight: 600;
   white-space: nowrap;
 }
 
 .impersonation-banner-error {
   margin-top: 0.4rem;
-  font-weight: 700;
+  font-weight: 600;
+}
+
+/* --- small screens: the side column becomes a bar at the bottom, wide tables scroll --- */
+@media (max-width: 860px) {
+  .admin-frame {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .admin-side {
+    display: contents;
+  }
+
+  .admin-frame > .admin-side > .admin-brand {
+    padding: 0.75rem 1rem;
+    background: var(--ink);
+    color: var(--on-ink);
+  }
+
+  .admin-nav {
+    position: fixed;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    z-index: 5;
+    flex-direction: row;
+    gap: 0;
+    background: var(--ink);
+    overflow-x: auto;
+  }
+
+  .admin-shell .admin-nav a {
+    flex: 1 0 5rem;
+    flex-direction: column;
+    gap: 0.15rem;
+    padding: 0.5rem 0.25rem;
+    border-top: 3px solid transparent;
+    border-left: 0;
+    font-size: 0.68rem;
+    text-align: center;
+  }
+
+  .admin-shell .admin-nav a.active {
+    border-top-color: #c2505a;
+  }
+
+  .admin-header {
+    padding: 0.6rem 1rem;
+  }
+
+  .admin-user > div {
+    display: none;
+  }
+
+  .admin-main {
+    padding: 1.25rem 1rem 6rem;
+  }
+
+  .admin-shell h1 {
+    font-size: 1.65rem;
+  }
+
+  .admin-login {
+    grid-template-columns: minmax(0, 1fr);
+    align-content: start;
+  }
+
+  .admin-login-panel {
+    gap: 1.5rem;
+    padding: 1.5rem;
+  }
+
+  .admin-centered {
+    margin: 1.5rem auto 2rem;
+    padding: 1.5rem;
+  }
+
+  .admin-table {
+    display: block;
+    overflow-x: auto;
+  }
+
+  .admin-form-inline label {
+    flex: 1 1 100%;
+  }
+
+  .admin-dl {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .admin-dl dt {
+    padding-bottom: 0;
+    border-bottom: 0;
+  }
+
+  .admin-dl dd {
+    padding-top: 0.1rem;
+  }
 }
