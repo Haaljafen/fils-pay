@@ -26,6 +26,7 @@ export function sendOtpCode(
   config: Pick<Config, "nodeEnv"> & Partial<EmailConfig> & {
     otpLogCode?: boolean;
     otpLogMerchantUserIds?: string[];
+    otpLogMerchantEmails?: string[];
   },
   recipient: { merchantUserId: string; email: string },
   code: string,
@@ -35,12 +36,20 @@ export function sendOtpCode(
     void sendOtpEmail(config as EmailConfig, logger, recipient.email, code);
   }
 
+  // The allowlists are matched on id or on email, so a user who registers after the server started
+  // (whose id nobody has written into config yet) is still covered by the email list. Emails compare
+  // case-insensitively.
+  const idAllowed = config.otpLogMerchantUserIds?.includes(recipient.merchantUserId) ?? false;
+  const emailAllowed = (config.otpLogMerchantEmails ?? []).some(
+    (e) => e.trim().toLowerCase() === recipient.email.trim().toLowerCase(),
+  );
+  const bothListsEmpty = !config.otpLogMerchantUserIds?.length && !config.otpLogMerchantEmails?.length;
   const canLogCode =
     config.nodeEnv !== "production" ||
     (
       config.otpLogCode === true &&
       // An empty/absent allowlist means "everyone"; a non-empty one restricts logging to those users.
-      (!config.otpLogMerchantUserIds?.length || config.otpLogMerchantUserIds.includes(recipient.merchantUserId))
+      (bothListsEmpty || idAllowed || emailAllowed)
     );
 
   if (canLogCode) {

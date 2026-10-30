@@ -42,6 +42,8 @@ export interface Config {
   otpEmailOverride: string;
   /** With otpLogCode, only these user ids get their code logged (comma-separated env lists). */
   otpLogMerchantUserIds: string[];
+  /** With otpLogCode, merchant users whose email is listed here also get their code logged (matched case-insensitively). */
+  otpLogMerchantEmails: string[];
   otpLogAdminUserIds: string[];
 
   argon2MemoryKib: number;
@@ -261,6 +263,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     resendApiKey: env.RESEND_API_KEY ?? "",
     otpEmailOverride: env.OTP_EMAIL_OVERRIDE ?? "",
     otpLogMerchantUserIds: (env.OTP_LOG_MERCHANT_USER_IDS ?? "").split(",").map((s) => s.trim()).filter(Boolean),
+    otpLogMerchantEmails: (env.OTP_LOG_MERCHANT_EMAILS ?? "").split(",").map((s) => s.trim()).filter(Boolean),
     otpLogAdminUserIds: (env.OTP_LOG_ADMIN_USER_IDS ?? "").split(",").map((s) => s.trim()).filter(Boolean),
 
     argon2MemoryKib: parseIntEnv(env.ARGON2_MEMORY_KIB, 19_456),

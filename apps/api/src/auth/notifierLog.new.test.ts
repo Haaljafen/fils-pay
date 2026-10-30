@@ -20,6 +20,16 @@ test("production never logs the code unless the switch is on, and a non-empty al
   for (const l of c.lines) assert.equal("code" in l.obj, false, l.msg);
 });
 
+test("the email allowlist logs a code for a user whose id is not yet known (new registrations)", () => {
+  const c = capture();
+  const fresh = { merchantUserId: "brand-new-id", email: "New.Merchant@Example.test" };
+  // Email matches (case-insensitive) even though the id is not on the id list.
+  sendOtpCode(c.logger, { nodeEnv: "production", otpLogCode: true, otpLogMerchantUserIds: [], otpLogMerchantEmails: ["new.merchant@example.test"] }, fresh, "333333");
+  // A different email on the same list is not logged.
+  sendOtpCode(c.logger, { nodeEnv: "production", otpLogCode: true, otpLogMerchantUserIds: [], otpLogMerchantEmails: ["someone@else.test"] }, fresh, "444444");
+  assert.deepEqual(c.lines.map((l) => l.obj.code), ["333333", undefined]);
+});
+
 test("an allowlisted user's code is written to the operator log", () => {
   const c = capture();
   sendOtpCode(c.logger, { nodeEnv: "production", otpLogCode: true, otpLogMerchantUserIds: ["u1"] }, user, "111111");
