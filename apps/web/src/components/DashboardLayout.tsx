@@ -11,7 +11,6 @@ import {
   SettlementIcon,
   TransactionsIcon,
   WebhookIcon,
-  GuideIcon,
 } from "./icons.js";
 import { ThemeToggle } from "./ThemeToggle.js";
 import "../dashboard.css";
@@ -77,10 +76,6 @@ export function DashboardLayout() {
           <NavLink to="/dashboard/overview">
             <OverviewIcon />
             <span>Overview</span>
-          </NavLink>
-          <NavLink to="/dashboard/guide">
-            <GuideIcon />
-            <span>Guide</span>
           </NavLink>
         </nav>
       </aside>

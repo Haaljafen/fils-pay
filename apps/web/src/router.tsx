@@ -18,7 +18,6 @@ import { SettlementBatchListPage } from "./pages/settlement/SettlementBatchListP
 import { SettlementBatchDetailPage } from "./pages/settlement/SettlementBatchDetailPage.js";
 import { ReconciliationPage } from "./pages/settlement/ReconciliationPage.js";
 import { OverviewPage } from "./pages/overview/OverviewPage.js";
-import { GuidePage } from "./pages/guide/GuidePage.js";
 
 // MK: /refunds route removed until FP-212
 export const router = createBrowserRouter([
@@ -104,7 +103,6 @@ export const router = createBrowserRouter([
           { path: "/dashboard/reconciliation", element: <ReconciliationPage /> },
 
           { path: "/dashboard/overview", element: <OverviewPage /> },
-          { path: "/dashboard/guide", element: <GuidePage /> },
         ],
       },
     ],

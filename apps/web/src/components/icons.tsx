@@ -96,12 +96,3 @@ export function MoonIcon() {
     </Icon>
   );
 }
-
-export function GuideIcon() {
-  return (
-    <Icon>
-      <path d="M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2z" />
-      <path d="M4 19V5M9 7h6" />
-    </Icon>
-  );
-}

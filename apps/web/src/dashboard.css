@@ -1113,51 +1113,6 @@ button[type="submit"].dash-button:hover:not(:disabled),
   font-size: 13px;
 }
 
-/* --- guide --- */
-.dash-guide-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(17rem, 1fr));
-  gap: 1rem;
-  margin: 1rem 0 2rem;
-}
-
-.dash-guide-card {
-  padding: 1.25rem 1.4rem;
-  border: 1px solid var(--rule);
-  border-radius: 8px;
-  background: var(--card);
-}
-
-.dash-guide-card h2 {
-  margin: 0 0 0.5rem;
-  padding: 0;
-  border: 0;
-  font-size: 1.1rem;
-}
-
-.dash-guide-card ol {
-  margin: 0;
-  padding-left: 1.2rem;
-}
-
-.dash-guide-card li + li {
-  margin-top: 0.35rem;
-}
-
-.dash-guide-note {
-  margin: 0.75rem 0 0;
-  color: var(--ink-soft);
-  font-size: 0.85rem;
-}
-
-.dash-guide-list {
-  padding-left: 1.2rem;
-}
-
-.dash-guide-list li + li {
-  margin-top: 0.4rem;
-}
-
 /* --- tablet: a compact icon rail --- */
 @media (min-width: 861px) and (max-width: 1099px) {
   .dash-shell {
@@ -1414,7 +1369,6 @@ button[type="submit"].dash-button:hover:not(:disabled),
 .dash-dl,
 .dash-tile,
 .dash-hero-main,
-.dash-guide-card,
 .dash-chart-card,
 .dash-confirm,
 .dash-centered {

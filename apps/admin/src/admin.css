@@ -1300,51 +1300,6 @@ textarea:focus {
   font-size: 13px;
 }
 
-/* --- guide --- */
-.admin-guide-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(17rem, 1fr));
-  gap: 1rem;
-  margin: 1rem 0 2rem;
-}
-
-.admin-guide-card {
-  padding: 1.25rem 1.4rem;
-  border: 1px solid var(--rule);
-  border-radius: 8px;
-  background: var(--card);
-}
-
-.admin-guide-card h2 {
-  margin: 0 0 0.5rem;
-  padding: 0;
-  border: 0;
-  font-size: 1.1rem;
-}
-
-.admin-guide-card ol {
-  margin: 0;
-  padding-left: 1.2rem;
-}
-
-.admin-guide-card li + li {
-  margin-top: 0.35rem;
-}
-
-.admin-guide-note {
-  margin: 0.75rem 0 0;
-  color: var(--ink-soft);
-  font-size: 0.85rem;
-}
-
-.admin-guide-list {
-  padding-left: 1.2rem;
-}
-
-.admin-guide-list li + li {
-  margin-top: 0.4rem;
-}
-
 /* --- tablet: a compact icon rail --- */
 @media (min-width: 861px) and (max-width: 1099px) {
   .admin-frame {
@@ -1601,7 +1556,6 @@ textarea:focus {
 .admin-dl,
 .admin-tile,
 .admin-hero-main,
-.admin-guide-card,
 .admin-chart-card,
 .admin-confirm,
 .admin-centered {
