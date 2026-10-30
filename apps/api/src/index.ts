@@ -3,6 +3,7 @@ import { loadConfig } from "./config.js";
 import { createPool } from "./db/pool.js";
 import { markDbConnectedOnce } from "./health/state.js";
 import { formatIsoDate } from "./lib/dateFormat.js";
+import { startPaymentLinkSweep, type PaymentLinkSweepHandle } from "./paymentLinks/sweepJob.js";
 import { startWebhookDispatcher, type WebhookDispatcherHandle } from "./webhooks/dispatcher.js";
 import { createFetchTransport } from "./webhooks/transport.js";
 
@@ -29,6 +30,8 @@ async function main(): Promise<void> {
   // MK: one dispatcher per replica. SKIP LOCKED in the claim query makes multiple replicas safe
   // am: we only run one replica anyway (512mb). fine
   const dispatcher: WebhookDispatcherHandle = startWebhookDispatcher(pool, webhookTransport, config);
+  // Settles payment links left reserved after a failed final write (bug 90).
+  const paymentLinkSweep: PaymentLinkSweepHandle = startPaymentLinkSweep(pool, config);
 
   let shuttingDown = false;
   /**
@@ -40,8 +43,7 @@ async function main(): Promise<void> {
     if (shuttingDown) return;
     shuttingDown = true;
     console.log(`[index] received ${signal}, shutting down`);
-    dispatcher
-      .stop()
+    Promise.all([dispatcher.stop(), paymentLinkSweep.stop()])
       .then(() => app.close())
       .then(() => pool.end())
       .catch((err: unknown) => {

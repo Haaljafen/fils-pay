@@ -104,6 +104,9 @@ export interface Config {
    *  attempt) before it self-expires back to claimable, closing the gap
    *  between claim and finalize without a sweep job. */
   paymentLinkReservationTimeoutSeconds: number;
+  /** How often the background sweep settles links stuck 'reserved' after a
+   *  failed final write (bug 90). */
+  paymentLinkSweepIntervalMs: number;
 
   /** Base64-encoded 32 raw bytes, the single application-level AES-256-GCM
    *  key `webhooks/secretCrypto.ts` uses to encrypt/decrypt
@@ -300,6 +303,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
 
     checkoutBaseUrl,
     paymentLinkReservationTimeoutSeconds: parseIntEnv(env.PAYMENT_LINK_RESERVATION_TIMEOUT_SECONDS, 60),
+    paymentLinkSweepIntervalMs: parseIntEnv(env.PAYMENT_LINK_SWEEP_INTERVAL_MS, 60_000),
 
     webhookSecretEncryptionKey: parseWebhookSecretEncryptionKey(
       env.WEBHOOK_SECRET_ENCRYPTION_KEY || (nodeEnv !== "production" ? DEV_FALLBACK_WEBHOOK_KEY_B64 : undefined),
