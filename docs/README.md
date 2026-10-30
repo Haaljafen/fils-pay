@@ -54,6 +54,7 @@ wrong, why it happens, and what it breaks.
 | 53 | The settlement summary double-counts a transaction captured twice | ✅ Fixed |
 | 54 | A capture its day's batch missed is never paid out | ✅ Fixed |
 | 55 | Production has no way to get a login code | 🟡 Workaround: `OTP_LOG_CODE`; no email/SMS sender yet |
+| 56 | The hosted dashboards can show a blank page after a rebuild | ✅ Fixed |
 
 ---
 
@@ -1580,3 +1581,37 @@ but are useless by then. Merchants can't get a code on their own: someone with
 server access has to pass it on. The line carries the user's id, not their email.
 
 **Still open:** a real email or SMS sender, after which this should be turned off.
+
+---
+
+## 56. The hosted dashboards can show a blank page after a rebuild ✅ Fixed
+
+**Files:** `ops/nginx.conf`, `apps/web/src/router.tsx`,
+`apps/admin/src/router.tsx`, `scripts/nginx_conf.test.ts`
+
+**What's wrong:** After a rebuild, a browser that visited before can show a
+blank white page, while a fresh browser shows the site normally. Separately, an
+unknown path such as `/admin` on port 80 shows "Unexpected Application Error!
+404 Not Found".
+
+**Why:** Each build gives the files under `/assets/` new names. `index.html` had
+no `Cache-Control`, so a browser could reuse its old copy without asking, and
+that copy names files the rebuild removed. nginx answered those requests with
+`index.html` and a 200, so the browser got HTML where it expected a script,
+refused to run it, and React never started. The console says "Failed to load
+module script". The routers had no catch-all route for the unknown paths.
+
+**What it breaks:** The dashboards look down to anyone who visited before the
+rebuild, until the cached page expires or they hard-refresh. `curl` and a private
+window show nothing wrong, which makes it easy to miss.
+
+**Fix:** `index.html` is sent with `no-cache`, so it is revalidated on every
+load. A missing file under `/assets/` is now a 404, and the hashed files are
+cached long term. Unknown paths redirect to the app's front door.
+
+**Side effects to know:** A browser that cached `index.html` before this fix
+keeps its copy until that expires, so it may still need one hard refresh. An
+expired or wrong link such as `/pay` with no token now lands on the dashboard
+login instead of an error page.
+
+The fix reaches the server only on a rebuild of the `web` and `admin` images.
