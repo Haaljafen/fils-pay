@@ -17,6 +17,7 @@ import { WebhookEndpointDetailPage } from "./pages/webhooks/WebhookEndpointDetai
 import { SettlementBatchListPage } from "./pages/settlement/SettlementBatchListPage.js";
 import { SettlementBatchDetailPage } from "./pages/settlement/SettlementBatchDetailPage.js";
 import { ReconciliationPage } from "./pages/settlement/ReconciliationPage.js";
+import { FeeSimulatorPage } from "./pages/simulator/FeeSimulatorPage.js";
 import { OverviewPage } from "./pages/overview/OverviewPage.js";
 
 // MK: /refunds route removed until FP-212
@@ -101,6 +102,7 @@ export const router = createBrowserRouter([
           { path: "/dashboard/settlement", element: <SettlementBatchListPage /> },
           { path: "/dashboard/settlement/:id", element: <SettlementBatchDetailPage /> },
           { path: "/dashboard/reconciliation", element: <ReconciliationPage /> },
+          { path: "/dashboard/simulator", element: <FeeSimulatorPage /> },
 
           { path: "/dashboard/overview", element: <OverviewPage /> },
         ],

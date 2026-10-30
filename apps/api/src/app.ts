@@ -15,6 +15,7 @@ import { refundRoutes } from "./routes/refunds.js";
 import { paymentLinkMerchantRoutes, paymentLinkPublicRoutes } from "./routes/paymentLinks.js";
 import { webhookEndpointRoutes } from "./routes/webhooks.js";
 import { settlementRoutes } from "./routes/settlement.js";
+import { whatIfRoutes } from "./routes/whatif.js";
 import { analyticsRoutes } from "./routes/analytics.js";
 import { reportingRoutes } from "./routes/reporting.js";
 import { adminRoutes, type AdminRoutesOptions } from "./routes/admin.js";
@@ -71,6 +72,7 @@ export function buildApp(config: Config, pool: Pool, options: BuildAppOptions = 
   app.register(paymentLinkPublicRoutes, { prefix: "/v1/payment-links" });
   app.register(webhookEndpointRoutes, { prefix: "/v1/merchants" });
   app.register(settlementRoutes, { prefix: "/v1/settlement" });
+  app.register(whatIfRoutes, { prefix: "/v1/simulations" });
   app.register(analyticsRoutes, { prefix: "/v1/analytics" });
   app.register(reportingRoutes, { prefix: "/v1/reporting" });
   // FH: "the acquirer signature is the only auth" — and inboundVerify rejects unsigned requests, so OK
