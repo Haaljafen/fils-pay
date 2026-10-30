@@ -1,72 +1,199 @@
+/* Customer checkout. Uses the dashboard's palette (tokens live on :root in dashboard.css,
+   which this bundle also loads), so the payment page matches the rest of FilsPay. */
+body:has(.checkout-page) {
+  margin: 0;
+  min-height: 100vh;
+  background: var(--paper);
+}
+
 .checkout-page {
-  max-width: 420px;
-  margin: 2rem auto;
-  padding: 1.5rem;
-  font-family: system-ui, sans-serif;
+  box-sizing: border-box;
+  width: calc(100% - 2rem);
+  max-width: 30rem;
+  margin: 2.5rem auto;
+  padding: 2rem 2rem 1.5rem;
+  border-radius: 28px;
+  background: var(--card);
+  color: var(--ink);
+  font-family: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-size: 15px;
+  line-height: 1.5;
+  box-shadow: 0 24px 48px -30px rgb(34 11 9 / 0.5);
 }
 
-.checkout-amount {
-  font-size: 2rem;
-  font-weight: 600;
-  margin: 0.5rem 0;
+.checkout-page::before {
+  content: "FilsPay";
+  display: block;
+  margin-bottom: 1.25rem;
+  font-family: var(--serif);
+  font-size: 1.2rem;
+  color: var(--blood);
 }
 
-.checkout-description,
-.checkout-reference {
-  color: #555;
+.checkout-page h1 {
+  margin: 0 0 0.35rem;
+  font-family: var(--serif);
+  font-size: 1.7rem;
+  font-weight: 400;
+  line-height: 1.2;
+}
+
+.checkout-page p {
   margin: 0.25rem 0;
+  color: var(--ink-soft);
+}
+
+.checkout-page dl {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.5rem 1rem;
+  margin: 1.25rem 0 0;
+  padding: 1rem 1.25rem;
+  border-radius: 18px;
+  background: var(--tint);
+}
+
+.checkout-page dt {
+  color: var(--ink-soft);
+  font-size: 0.85rem;
+}
+
+.checkout-page dd {
+  margin: 0;
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+
+.checkout-page .checkout-amount {
+  margin: 0.75rem 0 0.25rem;
+  font-family: var(--serif);
+  font-size: clamp(2.2rem, 8vw, 2.9rem);
+  line-height: 1.1;
+  color: var(--ink);
+}
+
+.checkout-page .checkout-description {
+  color: var(--ink);
+  font-weight: 500;
+}
+
+.checkout-reference {
+  display: inline-block;
+  margin-top: 0.5rem !important;
+  padding: 0.15rem 0.7rem;
+  border-radius: 999px;
+  background: var(--tint);
+  font-size: 0.85rem;
 }
 
 .checkout-error {
-  color: #b00020;
-  margin: 1rem 0;
+  margin: 1rem 0 0;
+  padding: 0.65rem 1rem;
+  border-radius: 14px;
+  background: var(--blood-soft);
+  color: var(--error-text) !important;
+  font-weight: 500;
 }
 
 .checkout-form {
   display: flex;
   flex-direction: column;
-  gap: 0.75rem;
+  gap: 0.9rem;
   margin-top: 1.5rem;
 }
 
 .checkout-form label {
   display: flex;
   flex-direction: column;
-  gap: 0.25rem;
-  font-size: 0.875rem;
+  gap: 0.3rem;
+  color: var(--ink-soft);
+  font-size: 0.82rem;
+  font-weight: 500;
 }
 
 .checkout-form input {
-  padding: 0.5rem;
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 2.8rem;
+  padding: 0.5rem 1rem;
+  border: 1.5px solid var(--rule-strong);
+  border-radius: 14px;
+  background: var(--field);
+  color: var(--ink);
+  font: inherit;
   font-size: 1rem;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.checkout-form input:focus {
+  outline: none;
+  border-color: var(--blood);
+  box-shadow: 0 0 0 4px rgb(133 34 47 / 0.18);
 }
 
 .checkout-form-row {
-  display: flex;
-  gap: 0.5rem;
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 0.75rem;
+}
+
+.checkout-brand-hint {
+  color: var(--blood);
+  font-size: 0.78rem;
+  font-weight: 600;
 }
 
 .checkout-form button {
-  padding: 0.75rem;
+  min-height: 3rem;
+  margin-top: 0.4rem;
+  border: 0;
+  border-radius: 999px;
+  background: var(--blood);
+  color: #fff;
+  font: inherit;
   font-size: 1rem;
+  font-weight: 600;
   cursor: pointer;
+  box-shadow: 0 12px 22px -12px rgb(133 34 47 / 0.9);
+  transition: transform 0.15s, background-color 0.15s;
+}
+
+.checkout-form button:hover:not(:disabled) {
+  transform: translateY(-2px);
+  background: var(--blood-dark);
 }
 
 .checkout-form button:disabled {
   cursor: not-allowed;
   opacity: 0.6;
-}
-
-/* YA: cosmetic only, never sent to the server */
-.checkout-brand-hint {
-  font-size: 0.75rem;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: #555;
+  box-shadow: none;
 }
 
 .checkout-help {
   margin-top: 1.5rem;
-  font-size: 0.75rem;
-  color: #777;
+  padding-top: 1rem;
+  border-top: 1px dashed var(--rule-strong);
+  font-size: 0.8rem;
+  color: var(--ink-soft);
+}
+
+.checkout-help code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.9em;
+}
+
+@media (max-width: 480px) {
+  .checkout-page {
+    margin: 1rem auto;
+    padding: 1.5rem 1.25rem 1.25rem;
+    border-radius: 24px;
+  }
+
+  .checkout-form-row {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .checkout-form-row label:last-child {
+    grid-column: 1 / -1;
+  }
 }

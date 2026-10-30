@@ -68,6 +68,9 @@ export function describeError(err: unknown): string {
     if (err.statusCode === 403) {
       return `Not permitted (${err.code}) — your admin role does not allow this action.`;
     }
+    if (err.code === "settlement_unreachable") {
+      return "The settlement service is not running or cannot be reached. Nothing was run. Start the settlement service and try again.";
+    }
     return err.body.message ?? err.code;
   }
   if (err instanceof Error) return err.message;

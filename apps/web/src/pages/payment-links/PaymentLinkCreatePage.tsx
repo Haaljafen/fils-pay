@@ -42,6 +42,10 @@ export function PaymentLinkCreatePage() {
       setError("Amount must be a positive whole number of fils.");
       return;
     }
+    if (!expiresAt) {
+      setError("Choose when the payment link expires. It is required.");
+      return;
+    }
     const expiresAtIso = localDateTimeToIso(expiresAt);
     if (!expiresAtIso) {
       setError("Expiry must be a valid date and time.");
@@ -74,7 +78,7 @@ export function PaymentLinkCreatePage() {
 
       {error ? <p className="dash-error">{error}</p> : null}
 
-      <form className="dash-form" onSubmit={(e) => void handleSubmit(e)}>
+      <form className="dash-form" noValidate onSubmit={(e) => void handleSubmit(e)}>
         <label>
           Amount in fils
           <input
@@ -96,7 +100,7 @@ export function PaymentLinkCreatePage() {
           <input type="text" value={description} onChange={(e) => setDescription(e.target.value)} />
         </label>
         <label>
-          Expires at
+          Expires at (required)
           <input
             type="datetime-local"
             required
