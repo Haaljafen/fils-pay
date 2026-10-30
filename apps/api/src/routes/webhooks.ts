@@ -9,6 +9,7 @@ import { createWebhookEndpoint } from "../webhooks/create.js";
 import { getWebhookEndpoint, listWebhookEndpoints } from "../webhooks/list.js";
 import { deleteWebhookEndpoint } from "../webhooks/cancel.js";
 import { updateWebhookEndpoint } from "../webhooks/update.js";
+import { rotateWebhookSecret } from "../webhooks/rotateSecret.js";
 import { replayWebhookDelivery } from "../webhooks/replay.js";
 import { getWebhookDelivery, listWebhookDeliveries } from "../webhooks/deliveries.js";
 import { sendTestWebhookEvent } from "../webhooks/testSend.js";
@@ -157,6 +158,21 @@ export async function webhookEndpointRoutes(app: FastifyInstance): Promise<void>
         endpointId: request.params.id,
       });
       reply.code(200).send(result);
+    },
+  );
+
+  app.post<{ Params: EndpointIdParams }>(
+    "/:merchantId/webhook-endpoints/:id/rotate-secret",
+    { preHandler: [requireMerchantAuth, requireMerchantRole("owner", "finance")] },
+    async (request, reply) => {
+      assertOwnMerchant(request);
+      const rotated = await rotateWebhookSecret(app.db, app.config, {
+        merchantId: request.params.merchantId,
+        id: request.params.id,
+      });
+      if (!rotated) throw new NotFoundError("webhook_endpoint_not_found");
+      // The new secret appears in this response only, same show-once rule as creation.
+      reply.code(200).send(rotated);
     },
   );
 

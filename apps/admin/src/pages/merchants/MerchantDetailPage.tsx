@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { formatBhd, parseBhdToFils, toFils } from "@filspay/money";
 import { getMerchant, recomputeTransactionStatuses, submitKycReview } from "../../api/merchants.js";
@@ -31,6 +31,10 @@ export function MerchantDetailPage() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const feedbackRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (notice || actionError) feedbackRef.current?.scrollIntoView({ block: "center", behavior: "smooth" });
+  }, [notice, actionError]);
 
   const [kycNotes, setKycNotes] = useState("");
   const [busy, setBusy] = useState(false);
@@ -249,8 +253,11 @@ export function MerchantDetailPage() {
         <code>{merchant.id}</code>
       </p>
 
-      {actionError ? <p className="admin-error">{actionError}</p> : null}
-      {notice ? <p className="admin-notice">{notice}</p> : null}
+      {/* Every action reports here. Bring it into view: the forms sit far below this line. */}
+      <div ref={feedbackRef}>
+        {actionError ? <p className="admin-error">{actionError}</p> : null}
+        {notice ? <p className="admin-notice">{notice}</p> : null}
+      </div>
 
       <h2>Profile</h2>
       <dl className="admin-dl">

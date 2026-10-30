@@ -48,6 +48,17 @@ export function updateWebhookEndpoint(
 
 /** Hard delete, `204` — the delivery log outlives the endpoint row. */
 /** Soft-disables the endpoint; delivery history is kept. */
+/** `200` — returns the new `secret` once. Deliveries from now on are signed with it. */
+export function rotateWebhookSecret(
+  merchantId: string,
+  id: string,
+): Promise<{ id: string; secretPrefix: string; secret: string }> {
+  return request(
+    `/v1/merchants/${encodeURIComponent(merchantId)}/webhook-endpoints/${encodeURIComponent(id)}/rotate-secret`,
+    { method: "POST" },
+  );
+}
+
 export function deleteWebhookEndpoint(merchantId: string, id: string): Promise<void> {
   return requestNoContent(
     `/v1/merchants/${encodeURIComponent(merchantId)}/webhook-endpoints/${encodeURIComponent(id)}`,

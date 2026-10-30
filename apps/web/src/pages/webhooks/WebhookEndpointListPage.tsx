@@ -6,6 +6,7 @@ import {
   updateWebhookEndpoint,
 } from "../../api/webhooks.js";
 import { describeError } from "../../api/client.js";
+import { rotateWebhookSecret } from "../../api/webhooks.js";
 import { useDashboardAuth } from "../../auth/DashboardAuthContext.js";
 import { dateTime } from "../../format.js";
 import type { WebhookEndpointDto } from "../../types.js";
@@ -26,6 +27,7 @@ export function WebhookEndpointListPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [rotated, setRotated] = useState<{ url: string; secret: string } | null>(null);
 
   const load = useCallback(async () => {
     if (!merchantId) return;
@@ -85,9 +87,44 @@ export function WebhookEndpointListPage() {
     }
   }
 
+  // Rotating replaces the signing secret at once. Confirm first, then show the new secret once.
+  async function handleRotate(endpoint: WebhookEndpointDto): Promise<void> {
+    if (!merchantId) return;
+    if (
+      !window.confirm(
+        `Rotate the signing secret for ${endpoint.url}? Deliveries from now on are signed with the new secret only. Update your receiver first, or at the same moment.`,
+      )
+    ) {
+      return;
+    }
+    setBusyId(endpoint.id);
+    setError(null);
+    setRotated(null);
+    try {
+      const result = await rotateWebhookSecret(merchantId, endpoint.id);
+      setRotated({ url: endpoint.url, secret: result.secret });
+      await load();
+    } catch (err) {
+      setError(describeError(err));
+    } finally {
+      setBusyId(null);
+    }
+  }
+
   return (
     <section>
       <h1>Webhook endpoints</h1>
+
+      {rotated ? (
+        <div className="dash-confirm" role="status">
+          <strong>New signing secret for {rotated.url}</strong>
+          <p>Shown once. Copy it into your receiver now; it cannot be read again.</p>
+          <p><code className="dash-secret">{rotated.secret}</code></p>
+          <button type="button" className="dash-button" onClick={() => setRotated(null)}>
+            I have saved it
+          </button>
+        </div>
+      ) : null}
 
       <p>
         <Link className="dash-button-link" to="/dashboard/webhooks/new">
@@ -136,6 +173,14 @@ export function WebhookEndpointListPage() {
                   onClick={() => void handleDelete(endpoint)}
                 >
                   Delete
+                </button>{" "}
+                <button
+                  type="button"
+                  className="dash-button"
+                  disabled={busyId === endpoint.id}
+                  onClick={() => void handleRotate(endpoint)}
+                >
+                  Rotate secret
                 </button>
               </td>
             </tr>
