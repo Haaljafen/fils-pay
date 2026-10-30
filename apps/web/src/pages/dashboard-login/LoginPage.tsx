@@ -8,6 +8,7 @@ import {
   writeLastMerchantId,
 } from "../../auth/DashboardAuthContext.js";
 import { LoginPanel } from "../../components/LoginPanel.js";
+import { ThemeToggle } from "../../components/ThemeToggle.js";
 import type { DashboardLoginResponse } from "../../types.js";
 import "../../dashboard.css";
 
@@ -122,6 +123,7 @@ export function LoginPage() {
 
   return (
     <main className="dash-login">
+      <ThemeToggle className="dash-login-theme" />
       <LoginPanel tagline="Every fils accounted for." copy="Transactions, payment links and settlements in one place." />
       <div className="dash-centered">
         <h1>Sign in</h1>

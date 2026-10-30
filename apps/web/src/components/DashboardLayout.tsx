@@ -4,7 +4,6 @@ import { useDashboardAuth } from "../auth/DashboardAuthContext.js";
 import { RequireRole } from "../auth/RequireRole.js";
 import { describeError } from "../api/client.js";
 import {
-  BrandMark,
   LinkIcon,
   LogoutIcon,
   OverviewIcon,
@@ -13,6 +12,7 @@ import {
   TransactionsIcon,
   WebhookIcon,
 } from "./icons.js";
+import { ThemeToggle } from "./ThemeToggle.js";
 import "../dashboard.css";
 
 /** Nav shell for every merchant dashboard screen. No impersonation banner
@@ -39,7 +39,6 @@ export function DashboardLayout() {
     <div className="dash-shell">
       <aside className="dash-side">
         <div className="dash-brand">
-          <BrandMark />
           <div>
             <strong>FilsPay</strong>
             <span>Merchant dashboard</span>
@@ -96,6 +95,7 @@ export function DashboardLayout() {
                 </div>
               </div>
             ) : null}
+            <ThemeToggle />
             <button type="button" className="dash-button dash-logout" onClick={() => void handleSignOut()}>
               <LogoutIcon />
               Log out

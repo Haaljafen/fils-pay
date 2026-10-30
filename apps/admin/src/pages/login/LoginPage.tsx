@@ -4,6 +4,7 @@ import { login, verifyOtp } from "../../api/auth.js";
 import { describeError } from "../../api/client.js";
 import { useAdminAuth } from "../../auth/AdminAuthContext.js";
 import { LoginPanel } from "../../components/LoginPanel.js";
+import { ThemeToggle } from "../../components/ThemeToggle.js";
 import type { AdminLoginResponse } from "../../types.js";
 
 type Step =
@@ -72,6 +73,7 @@ export function LoginPage() {
 
   return (
     <main className="admin-login">
+      <ThemeToggle className="admin-login-theme" />
       <LoginPanel tagline="Every fils accounted for." copy="Merchants, credits and settlement operations in one place." />
       <div className="admin-centered">
         <h1>Sign in</h1>
@@ -104,7 +106,6 @@ export function LoginPage() {
             <button type="submit" disabled={submitting}>
               {submitting ? "Signing in..." : "Continue"}
             </button>
-
           </form>
         ) : (
           <form onSubmit={(e) => void handleOtp(e)} className="admin-form">

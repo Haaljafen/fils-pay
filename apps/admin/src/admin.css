@@ -1,40 +1,124 @@
-/* The admin console's stylesheet: the same design as apps/web/src/dashboard.css
-   (parchment, ink and oxblood; serif headings, sans text). Only the admin console
-   loads this bundle, so bare element rules are fine. */
+/* One shared stylesheet for the whole /dashboard/* subtree, sized for the
+   dashboard's page count rather than a .css file per page. Parchment, ink and
+   oxblood; a serif for headings and figures, a sans for everything else.
+   apps/admin/src/admin.css uses the same design.
+
+   Every selector is namespaced `admin-*`. Nothing here styles a bare element
+   (no `body`, no `button`), because Vite bundles all imported CSS into one
+   stylesheet for the whole app — a global rule here would reach the
+   /pay/:token checkout page too, which has its own look and must keep it. */
 @import "@fontsource/source-serif-4/400.css";
 @import "@fontsource/ibm-plex-sans/400.css";
 @import "@fontsource/ibm-plex-sans/500.css";
 @import "@fontsource/ibm-plex-sans/600.css";
 
-.admin-shell,
-.admin-login,
-.admin-centered {
-  --ink: #1f1a17;
-  --ink-soft: #655b52;
-  --paper: #f4efe6;
-  --card: #fffdf9;
-  --tint: #f8f4ec;
-  --rule: #e0d8ca;
-  --rule-strong: #c9bea9;
-  --blood: #7f1d27;
-  --blood-dark: #65161e;
-  --blood-soft: #f6e4e1;
+/* am: dont add bare element selectors here, they leak into checkout (see top) */
+/* Tokens. Light by default; dark follows the device, unless the visitor chose otherwise.
+   Palette: Red Dahlia #85222F is the main colour; Vampire Hunter, Rum Chocolate and
+   Severely Burnt Toast carry hover and dark surfaces; Pewter Tray is the light neutral. */
+:root {
+  color-scheme: light;
+  --ink: #220b09;
+  --ink-soft: #6b5a57;
+  --paper: #eef2ef;
+  --card: #ffffff;
+  --field: #ffffff;
+  --tint: #e6ece8;
+  --rule: #d9e0db;
+  --rule-strong: #bdc7c0;
+  --blood: #85222f;
+  --blood-dark: #5f0309;
+  --blood-soft: #f3dfe1;
   --amber: #7a5310;
   --amber-soft: #f6ecd3;
   --green: #2f5a3c;
   --green-soft: #e3ecdf;
-  --on-ink: #f4efe6;
-  --on-ink-soft: #b9ae9f;
-  --serif: "Source Serif 4", Georgia, "Times New Roman", serif;
+  --on-ink: #f6f1f0;
+  --on-ink-soft: #bdc7c0;
+  --sidebar: #220b09;
+  --sidebar-hover: #4a0a0f;
+  --hero: #4a0a0f;
+  --accent: #85222f;
+  --error-text: #5f0309;
+  --error-border: #e0b3b8;
+  --ok-text: #234530;
+  --ok-border: #bcd0b6;
+}
+
+/* Dark: the same palette, lifted for dark backgrounds. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --ink: #f6f1f0;
+    --ink-soft: #bdc7c0;
+    --paper: #1a0708;
+    --card: #2a0d10;
+    --field: #220b09;
+    --tint: #351114;
+    --rule: #4a1e21;
+    --rule-strong: #6b3a3e;
+    --blood: #a8323f;
+    --blood-dark: #85222f;
+    --blood-soft: #3d1215;
+    --amber: #e8b865;
+    --amber-soft: #3a2b14;
+    --green: #9bd0a6;
+    --green-soft: #1b2e21;
+    --on-ink: #f6f1f0;
+    --on-ink-soft: #bdc7c0;
+    --sidebar: #140505;
+    --sidebar-hover: #3a1214;
+    --hero: #4a0a0f;
+    --accent: #c8414d;
+    --error-text: #f4bcc2;
+    --error-border: #5e2a2f;
+    --ok-text: #bfe3c6;
+    --ok-border: #2f4d36;
+  }
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --ink: #f6f1f0;
+  --ink-soft: #bdc7c0;
+  --paper: #1a0708;
+  --card: #2a0d10;
+  --field: #220b09;
+  --tint: #351114;
+  --rule: #4a1e21;
+  --rule-strong: #6b3a3e;
+  --blood: #a8323f;
+  --blood-dark: #85222f;
+  --blood-soft: #3d1215;
+  --amber: #e8b865;
+  --amber-soft: #3a2b14;
+  --green: #9bd0a6;
+  --green-soft: #1b2e21;
+  --on-ink: #f6f1f0;
+  --on-ink-soft: #bdc7c0;
+  --sidebar: #140505;
+  --sidebar-hover: #3a1214;
+  --hero: #4a0a0f;
+  --accent: #c8414d;
+  --error-text: #f4bcc2;
+  --error-border: #5e2a2f;
+  --ok-text: #bfe3c6;
+  --ok-border: #2f4d36;
+}
+
+.admin-shell,
+.admin-login,
+.admin-centered {
   font-family: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
   font-size: 15px;
   line-height: 1.5;
   color: var(--ink);
 }
 
+/* Only pages that render the dashboard match these, so checkout keeps its own body. */
 body {
   margin: 0;
-  background: #f4efe6;
+  background: var(--paper);
 }
 
 .admin-shell {
@@ -44,7 +128,7 @@ body {
 
 .admin-frame {
   display: grid;
-  grid-template-columns: 15rem minmax(0, 1fr);
+  grid-template-columns: 16.5rem minmax(0, 1fr);
   min-height: 100vh;
 }
 
@@ -65,13 +149,13 @@ body {
   font-weight: 400;
 }
 
-a {
+.admin-shell a {
   color: var(--blood);
   font-weight: 500;
   text-decoration: none;
 }
 
-a:hover {
+.admin-shell a:hover {
   text-decoration: underline;
   text-underline-offset: 3px;
 }
@@ -98,7 +182,7 @@ a:hover {
   box-sizing: border-box;
   height: 100vh;
   padding: 1.5rem 0;
-  background: var(--ink);
+  background: var(--sidebar);
   color: var(--on-ink);
   overflow-y: auto;
 }
@@ -146,14 +230,14 @@ a:hover {
 }
 
 .admin-shell .admin-nav a:hover {
-  background: #2c2622;
+  background: var(--sidebar-hover);
   color: var(--on-ink);
 }
 
 .admin-shell .admin-nav a.active {
-  border-left-color: #c2505a;
-  background: #2c2622;
-  color: #fff;
+  border-left-color: var(--accent);
+  background: var(--sidebar-hover);
+  color: var(--on-ink);
   font-weight: 500;
 }
 
@@ -263,23 +347,11 @@ a:hover {
   justify-content: space-between;
   gap: 3rem;
   padding: 2.5rem;
-  background: var(--ink);
+  background: var(--sidebar);
   color: var(--on-ink);
   overflow: hidden;
 }
 
-/* Fine concentric rings, after the engraving on a banknote. */
-.admin-login-panel::before {
-  content: "";
-  position: absolute;
-  top: 50%;
-  right: -16rem;
-  width: 40rem;
-  height: 40rem;
-  border-radius: 50%;
-  background: repeating-radial-gradient(circle, transparent 0 11px, rgb(244 239 230 / 0.07) 11px 12px);
-  transform: translateY(-50%);
-}
 
 .admin-login-panel > * {
   position: relative;
@@ -323,7 +395,7 @@ a:hover {
   background: none;
 }
 
-.admin-centered .admin-form button {
+.admin-centered .admin-form .admin-button {
   align-self: stretch;
   justify-content: center;
 }
@@ -341,7 +413,7 @@ a:hover {
   background: var(--card);
 }
 
-.admin-form > button {
+.admin-form > .admin-button {
   align-self: flex-start;
 }
 
@@ -353,7 +425,7 @@ a:hover {
   padding: 1rem 1.25rem;
 }
 
-.admin-form-inline > button {
+.admin-form-inline > .admin-button {
   align-self: flex-end;
 }
 
@@ -385,7 +457,7 @@ a:hover {
   padding: 0.4rem 0.7rem;
   border: 1px solid var(--rule-strong);
   border-radius: 6px;
-  background: #fff;
+  background: var(--field);
   color: var(--ink);
   font: inherit;
   font-size: 0.95rem;
@@ -402,7 +474,8 @@ a:hover {
   accent-color: var(--blood);
 }
 
-button {
+.admin-button,
+.admin-button-link {
   display: inline-flex;
   align-items: center;
   gap: 0.45rem;
@@ -422,34 +495,38 @@ button {
   transition: background-color 0.12s, border-color 0.12s;
 }
 
-button[type="submit"] {
+.admin-shell .admin-button-link {
+  border-color: var(--blood);
+  background: var(--blood);
+  color: #fff;
+  font-weight: 500;
+}
+
+button[type="submit"].admin-button {
   border-color: var(--blood);
   background: var(--blood);
   color: #fff;
 }
 
-button:hover:not(:disabled) {
+.admin-button:hover:not(:disabled) {
   border-color: var(--ink-soft);
   background: var(--tint);
 }
 
-button[type="submit"]:hover:not(:disabled) {
+button[type="submit"].admin-button:hover:not(:disabled),
+.admin-shell .admin-button-link:hover {
   border-color: var(--blood-dark);
   background: var(--blood-dark);
   text-decoration: none;
 }
 
-button:disabled {
+.admin-button:disabled {
   cursor: default;
   opacity: 0.55;
 }
 
 .admin-logout {
   flex: none;
-}
-
-button + button {
-  margin-left: 0.5rem;
 }
 
 .admin-logout svg {
@@ -537,6 +614,7 @@ button + button {
 }
 
 /* --- tables and detail lists --- */
+/* FH: table re-layout on every poll = the overview memory leak? */
 .admin-table {
   width: 100%;
   margin: 0.75rem 0 1.25rem;
@@ -565,8 +643,7 @@ button + button {
   font-weight: 500;
 }
 
-.admin-table button {
-  margin-left: 0;
+.admin-table .admin-button {
   min-height: 2rem;
   margin: 0.1rem 0.25rem 0.1rem 0;
   padding: 0.1rem 0.7rem;
@@ -614,6 +691,71 @@ button + button {
   border-bottom: 0;
 }
 
+/* --- overview summary --- */
+.admin-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) minmax(16rem, 1fr);
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.admin-hero-main {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 1.75rem 2rem;
+  border-radius: 8px;
+  background: var(--hero);
+  color: var(--on-ink);
+}
+
+.admin-shell .admin-hero-main h1 {
+  margin: 0 0 1.25rem;
+  font-size: 1.25rem;
+}
+
+.admin-hero-label {
+  margin: 0;
+  color: var(--on-ink-soft);
+}
+
+.admin-hero-amount {
+  margin: 0.25rem 0 0.6rem;
+  font-family: var(--serif);
+  font-size: clamp(2.2rem, 4.4vw, 3.5rem);
+  letter-spacing: -0.015em;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+}
+
+.admin-tiles {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.admin-tile {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 0.8rem 1.25rem;
+  border: 1px solid var(--rule);
+  border-radius: 8px;
+  background: var(--card);
+}
+
+.admin-tile strong {
+  font-family: var(--serif);
+  font-size: 1.5rem;
+  font-weight: 400;
+  line-height: 1.25;
+  font-variant-numeric: tabular-nums;
+}
+
+.admin-tile span {
+  color: var(--ink-soft);
+  font-size: 0.82rem;
+}
+
 /* --- messages --- */
 .admin-muted {
   color: var(--ink-soft);
@@ -627,10 +769,10 @@ button + button {
 .admin-error {
   margin: 0.9rem 0;
   padding: 0.65rem 1rem;
-  border: 1px solid #dfb6b0;
+  border: 1px solid var(--error-border);
   border-radius: 6px;
   background: var(--blood-soft);
-  color: var(--blood-dark);
+  color: var(--error-text);
   font-weight: 500;
 }
 
@@ -641,10 +783,10 @@ button + button {
 .admin-notice {
   margin: 0.9rem 0;
   padding: 0.65rem 1rem;
-  border: 1px solid #bcd0b6;
+  border: 1px solid var(--ok-border);
   border-radius: 6px;
   background: var(--green-soft);
-  color: #234530;
+  color: var(--ok-text);
   font-weight: 500;
 }
 
@@ -655,6 +797,114 @@ button + button {
   border: 1px solid var(--blood);
   border-radius: 8px;
   background: var(--card);
+}
+
+.admin-secret {
+  display: inline-block;
+  padding: 0.4rem 0.7rem;
+  border: 1px solid var(--rule-strong);
+  border-radius: 6px;
+  background: var(--field);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  user-select: all;
+  word-break: break-all;
+}
+
+.admin-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+  margin: 1rem 0;
+}
+
+.admin-pre {
+  margin: 0.3rem 0 0;
+  max-width: 28rem;
+  max-height: 10rem;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+  font-size: 0.85em;
+}
+
+/* Status labels: quiet tinted labels. */
+.admin-status {
+  display: inline-block;
+  padding: 0.05rem 0.5rem;
+  border-radius: 4px;
+  background: var(--tint);
+  color: var(--ink-soft);
+  font-size: 0.8rem;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.admin-status-captured,
+.admin-status-paid,
+.admin-status-succeeded,
+.admin-status-active {
+  background: var(--green-soft);
+  color: var(--green);
+}
+
+.admin-status-authorized,
+.admin-status-partially_captured,
+.admin-status-pending,
+.admin-status-reserved,
+.admin-status-open {
+  background: var(--amber-soft);
+  color: var(--amber);
+}
+
+.admin-status-voided,
+.admin-status-canceled,
+.admin-status-disabled,
+.admin-status-exhausted,
+.admin-status-failed,
+.admin-status-chargeback {
+  background: var(--blood-soft);
+  color: var(--blood);
+}
+
+.admin-status-refunded,
+.admin-status-closed {
+  background: var(--rule);
+  color: var(--ink);
+}
+
+.admin-badge {
+  display: inline-block;
+  padding: 0.05rem 0.5rem;
+  border-radius: 4px;
+  font-family: "IBM Plex Sans", system-ui, sans-serif;
+  font-size: 0.72rem;
+  font-weight: 500;
+  vertical-align: middle;
+}
+
+.admin-badge-live,
+.admin-badge-ok {
+  background: var(--green-soft);
+  color: var(--green);
+}
+
+.admin-badge-stale,
+.admin-badge-gap {
+  background: var(--amber-soft);
+  color: var(--amber);
+}
+
+.admin-bar-cell {
+  width: 12rem;
+}
+
+.admin-bar {
+  display: block;
+  height: 0.5rem;
+  min-width: 2px;
+  border-radius: 2px;
+  background: var(--blood);
 }
 
 /* --- tabs inside a page; the current one is the disabled one --- */
@@ -757,6 +1007,91 @@ button + button {
   font-weight: 600;
 }
 
+
+/* --- admin: every control has a style, not only the login pages --- */
+button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  min-height: 2.5rem;
+  padding: 0.45rem 1.2rem;
+  border: 1px solid var(--rule-strong);
+  border-radius: 999px;
+  background: var(--card);
+  color: var(--ink);
+  font: inherit;
+  font-size: 0.9rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: transform 0.15s, background-color 0.15s;
+}
+
+button:hover:not(:disabled) {
+  transform: translateY(-1px);
+  background: var(--tint);
+}
+
+button:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+button[type="submit"] {
+  border-color: var(--blood);
+  background: var(--blood);
+  color: #fff;
+  box-shadow: 0 10px 20px -10px rgb(133 34 47 / 0.7);
+}
+
+button[type="submit"]:hover:not(:disabled) {
+  background: var(--blood-dark);
+}
+
+a {
+  color: var(--blood);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+select,
+textarea,
+input:not([type="checkbox"], [type="radio"]) {
+  min-height: 2.6rem;
+  padding: 0.5rem 1rem;
+  border: 1.5px solid var(--rule-strong);
+  border-radius: 14px;
+  background: var(--field);
+  color: var(--ink);
+  font: inherit;
+  font-size: 0.95rem;
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+  outline: none;
+  border-color: var(--blood);
+  box-shadow: 0 0 0 4px rgb(133 34 47 / 0.18);
+}
+
+.admin-centered {
+  border: 0;
+  border-radius: 28px;
+  padding: 2.5rem;
+  box-shadow: 0 24px 48px -28px rgb(31 26 23 / 0.45);
+}
+
+.admin-login-panel {
+  margin: 1rem;
+  border-radius: 32px;
+}
+
 /* --- small screens: the side column becomes a bar at the bottom, wide tables scroll --- */
 @media (max-width: 860px) {
   .admin-frame {
@@ -770,7 +1105,7 @@ button + button {
 
   .admin-frame > .admin-side > .admin-brand {
     padding: 0.75rem 1rem;
-    background: var(--ink);
+    background: var(--sidebar);
     color: var(--on-ink);
   }
 
@@ -782,7 +1117,7 @@ button + button {
     z-index: 5;
     flex-direction: row;
     gap: 0;
-    background: var(--ink);
+    background: var(--sidebar);
     overflow-x: auto;
   }
 
@@ -798,7 +1133,7 @@ button + button {
   }
 
   .admin-shell .admin-nav a.active {
-    border-top-color: #c2505a;
+    border-top-color: var(--accent);
   }
 
   .admin-header {
@@ -832,6 +1167,14 @@ button + button {
     padding: 1.5rem;
   }
 
+  .admin-hero {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .admin-hero-main {
+    padding: 1.25rem;
+  }
+
   .admin-table {
     display: block;
     overflow-x: auto;
@@ -852,5 +1195,436 @@ button + button {
 
   .admin-dl dd {
     padding-top: 0.1rem;
+  }
+}
+
+/* --- login: theme switch and the Bahraini panel --- */
+.admin-login {
+  position: relative;
+}
+
+.admin-login-theme {
+  position: absolute;
+  top: 1.25rem;
+  right: 1.25rem;
+  z-index: 2;
+}
+
+.admin-login-panel {
+  padding-left: 2.75rem;
+}
+
+.admin-login-panel .admin-motif {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  color: rgb(206 17 38 / 0.3);
+  pointer-events: none;
+}
+
+.admin-login-panel .admin-band {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 1.1rem;
+  height: 100%;
+}
+
+.admin-login-text {
+  position: relative;
+}
+
+.admin-login-arabic {
+  margin: 0.5rem 0 0.75rem;
+  font-family: var(--serif);
+  font-size: 1.3rem;
+  color: var(--on-ink);
+}
+
+.admin-theme-toggle {
+  display: inline-grid;
+  flex: none;
+  place-items: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  padding: 0;
+  border: 1px solid var(--rule-strong);
+  border-radius: 50%;
+  background: var(--card);
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.admin-theme-toggle svg {
+  width: 18px;
+  height: 18px;
+}
+
+.admin-theme-toggle:hover {
+  background: var(--tint);
+}
+
+/* --- overview chart --- */
+.admin-chart-card {
+  margin: 0.5rem 0 1.25rem;
+  padding: 1rem 1.25rem;
+  border: 1px solid var(--rule);
+  border-radius: 8px;
+  background: var(--card);
+}
+
+.admin-chart {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.admin-chart-bar {
+  fill: var(--blood);
+}
+
+.admin-chart-bar:hover {
+  opacity: 0.75;
+}
+
+.admin-chart-grid {
+  stroke: var(--rule);
+  stroke-width: 1;
+}
+
+.admin-chart-label {
+  fill: var(--ink-soft);
+  font-family: "IBM Plex Sans", sans-serif;
+  font-size: 13px;
+}
+
+/* --- tablet: a compact icon rail --- */
+@media (min-width: 861px) and (max-width: 1099px) {
+  .admin-frame {
+    grid-template-columns: 4.75rem minmax(0, 1fr);
+  }
+
+  .admin-brand {
+    justify-content: center;
+    padding: 0;
+  }
+
+  .admin-brand > div,
+  .admin-shell .admin-nav a span {
+    display: none;
+  }
+
+  .admin-shell .admin-nav a {
+    justify-content: center;
+    padding: 0.8rem 0;
+  }
+
+  .admin-header {
+    padding: 0.85rem 1.25rem;
+  }
+
+  .admin-main {
+    padding: 1.5rem 1.25rem 3rem;
+  }
+}
+
+/* --- phones --- */
+@media (max-width: 480px) {
+  .admin-header {
+    flex-wrap: wrap;
+    gap: 0.6rem;
+    padding: 0.6rem 0.9rem;
+  }
+
+  .admin-identity {
+    margin-left: auto;
+  }
+
+  .admin-tiles {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .admin-hero-amount {
+    font-size: 2.1rem;
+  }
+
+  .admin-main {
+    padding: 1rem 0.75rem 6rem;
+  }
+
+  .admin-centered {
+    width: calc(100% - 1.5rem);
+    padding: 1.25rem;
+  }
+
+  .admin-login-panel {
+    padding: 1.25rem 1.25rem 1.25rem 2.25rem;
+  }
+
+  .admin-login-theme {
+    top: 0.75rem;
+    right: 0.75rem;
+  }
+}
+
+/* --- login and sign-up: soft, rounded and fully styled --- */
+.admin-login-panel {
+  margin: 1rem;
+  border-radius: 32px;
+}
+
+.admin-centered {
+  border: 0;
+  border-radius: 28px;
+  padding: 2.5rem;
+  box-shadow: 0 24px 48px -28px rgb(31 26 23 / 0.45);
+}
+
+.admin-login button,
+.admin-centered button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  min-height: 2.9rem;
+  padding: 0.55rem 1.5rem;
+  border: 0;
+  border-radius: 999px;
+  background: var(--blood);
+  color: #fff;
+  font: inherit;
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 10px 20px -10px rgb(133 34 47 / 0.7);
+  transition: transform 0.15s, box-shadow 0.15s, background-color 0.15s;
+}
+
+.admin-login button:hover:not(:disabled),
+.admin-centered button:hover:not(:disabled) {
+  transform: translateY(-2px);
+  background: var(--blood-dark);
+  box-shadow: 0 14px 24px -12px rgb(133 34 47 / 0.8);
+}
+
+.admin-login button:active:not(:disabled),
+.admin-centered button:active:not(:disabled) {
+  transform: translateY(0) scale(0.98);
+}
+
+.admin-login button:disabled,
+.admin-centered button:disabled {
+  opacity: 0.55;
+  cursor: default;
+  box-shadow: none;
+}
+
+/* Secondary buttons: outlined, so the primary action stands out. */
+.admin-login button.admin-secondary,
+.admin-centered button.admin-secondary,
+.admin-login .admin-theme-toggle,
+.admin-centered .admin-theme-toggle {
+  background: var(--card);
+  color: var(--ink);
+  border: 1px solid var(--rule-strong);
+  box-shadow: none;
+}
+
+.admin-login button.admin-secondary:hover:not(:disabled),
+.admin-centered button.admin-secondary:hover:not(:disabled),
+.admin-login .admin-theme-toggle:hover,
+.admin-centered .admin-theme-toggle:hover {
+  background: var(--tint);
+  box-shadow: none;
+}
+
+.admin-login input:not([type="checkbox"], [type="radio"]),
+.admin-centered input:not([type="checkbox"], [type="radio"]),
+.admin-centered select {
+  min-height: 2.8rem;
+  padding: 0.5rem 1rem;
+  border: 1.5px solid var(--rule-strong);
+  border-radius: 14px;
+  background: var(--field);
+  color: var(--ink);
+  font: inherit;
+  font-size: 0.95rem;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.admin-login input:focus,
+.admin-centered input:focus,
+.admin-centered select:focus {
+  outline: none;
+  border-color: var(--blood);
+  box-shadow: 0 0 0 4px rgb(133 34 47 / 0.18);
+}
+
+.admin-login a,
+.admin-centered a {
+  color: var(--blood);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.admin-login a:hover,
+.admin-centered a:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.admin-login h1,
+.admin-centered h1 {
+  font-size: 2.2rem;
+}
+
+.admin-login-tagline {
+  font-size: clamp(2rem, 3.4vw, 2.9rem);
+}
+
+.admin-centered .admin-error,
+.admin-centered .admin-notice {
+  border-radius: 14px;
+}
+
+/* The theme button is an icon: keep it round, even inside the login card. */
+.admin-login .admin-theme-toggle,
+.admin-centered .admin-theme-toggle {
+  width: 2.5rem;
+  min-height: 2.5rem;
+  padding: 0;
+  border-radius: 50%;
+}
+
+/* --- bubbly pass: rounded cards, a floating sidebar, pill navigation --- */
+.admin-side {
+  top: 0.75rem;
+  height: calc(100vh - 1.5rem);
+  margin: 0.75rem 0 0.75rem 0.75rem;
+  padding: 1.25rem 0.6rem;
+  border-radius: 32px;
+  box-shadow: 0 24px 48px -30px rgb(34 11 9 / 0.7);
+}
+
+.admin-brand {
+  padding: 0 0.9rem;
+}
+
+.admin-shell .admin-nav a {
+  margin: 0 0.5rem;
+  padding: 0.7rem 1rem;
+  border-left: 0;
+  border-radius: 999px;
+}
+
+.admin-shell .admin-nav a:hover {
+  background: var(--sidebar-hover);
+  color: var(--on-ink);
+}
+
+.admin-shell .admin-nav a.active {
+  background: var(--blood);
+  color: #fff;
+  font-weight: 600;
+  box-shadow: 0 10px 22px -12px rgb(133 34 47 / 0.95);
+  clip-path: none;
+}
+
+.admin-header {
+  margin: 0.75rem 0.75rem 0;
+  padding: 0.75rem 1.25rem;
+  border: 1px solid var(--rule);
+  border-radius: 999px;
+  background: var(--card);
+  box-shadow: 0 8px 20px -18px rgb(34 11 9 / 0.6);
+}
+
+.admin-main {
+  padding-top: 1.5rem;
+}
+
+.admin-main > section > h1 {
+  font-size: 2.2rem;
+}
+
+/* Every panel is a bubble. */
+.admin-table,
+.admin-form,
+.admin-filters,
+.admin-dl,
+.admin-tile,
+.admin-hero-main,
+.admin-chart-card,
+.admin-confirm,
+.admin-centered {
+  border-radius: 26px;
+}
+
+.admin-table {
+  box-shadow: 0 16px 34px -26px rgb(34 11 9 / 0.55);
+}
+
+.admin-table th {
+  background: var(--sidebar-hover);
+  color: var(--on-ink);
+  font-weight: 600;
+}
+
+.admin-table th:first-child { border-top-left-radius: 26px; }
+.admin-table th:last-child { border-top-right-radius: 26px; }
+.admin-table td { padding-top: 0.9rem; padding-bottom: 0.9rem; }
+
+.admin-status,
+.admin-badge,
+.admin-chip {
+  border-radius: 999px;
+  padding-left: 0.75rem;
+  padding-right: 0.75rem;
+}
+
+.admin-shell input:not([type="checkbox"], [type="radio"]),
+.admin-shell select,
+.admin-shell textarea {
+  border-radius: 18px;
+}
+
+.admin-button,
+.admin-button-link {
+  border-radius: 999px;
+  padding-left: 1.3rem;
+  padding-right: 1.3rem;
+  box-shadow: 0 8px 18px -12px rgb(34 11 9 / 0.6);
+}
+
+.admin-hero-main {
+  box-shadow: 0 24px 40px -28px rgb(34 11 9 / 0.8);
+}
+
+.admin-tile {
+  box-shadow: 0 10px 22px -18px rgb(34 11 9 / 0.5);
+}
+
+@media (min-width: 861px) and (max-width: 1099px) {
+  .admin-side {
+    margin: 0.5rem 0 0.5rem 0.5rem;
+  }
+
+  .admin-shell .admin-nav a {
+    margin: 0 0.35rem;
+    padding: 0.7rem 0;
+  }
+}
+
+@media (max-width: 860px) {
+  .admin-header {
+    margin: 0.5rem 0.5rem 0;
+    border-radius: 24px;
+  }
+
+  .admin-shell .admin-nav a {
+    margin: 0.15rem;
+    border-radius: 999px;
   }
 }

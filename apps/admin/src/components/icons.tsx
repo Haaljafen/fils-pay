@@ -19,16 +19,6 @@ function Icon({ children }: { children: ReactNode }) {
   );
 }
 
-export function BrandMark() {
-  return (
-    <svg viewBox="0 0 40 40" width="38" height="38" aria-hidden="true">
-      <circle cx="20" cy="20" r="20" fill="#8a1c26" />
-      <circle cx="20" cy="20" r="14.5" fill="none" stroke="#efe5d2" strokeWidth="1" />
-      <path d="M16 28V12.5h9M16 19.5h7" fill="none" stroke="#efe5d2" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}
-
 export function MerchantsIcon() {
   return (
     <Icon>
@@ -79,6 +69,23 @@ export function LogoutIcon() {
   return (
     <Icon>
       <path d="M10 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h4M15 8l4 4-4 4M19 12H9" />
+    </Icon>
+  );
+}
+
+export function SunIcon() {
+  return (
+    <Icon>
+      <circle cx="12" cy="12" r="4" />
+      <path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" />
+    </Icon>
+  );
+}
+
+export function MoonIcon() {
+  return (
+    <Icon>
+      <path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z" />
     </Icon>
   );
 }
